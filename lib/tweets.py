@@ -6,8 +6,10 @@ import json
 from datetime import datetime
 import re
 from typing import List, Optional
+from enum import Enum
 
 from lib import arxiv
+from lib import util
 
 class TweetCredentials(BaseModel):
     bearer_token: str = ...
@@ -35,10 +37,10 @@ def maybe_get(d, nested_keys, default=None):
             return default
     return d
 
-
-class TwitterAPI():
+class TwitterAPIEndpoints(Enum):
     SEARCH_ENDPOINT = "https://api.twitter.com/2/tweets/search/recent"
 
+class TwitterAPI():
     def __init__(self):
         with open("private/tweets_auth.yaml", "r") as f:
             yml = yaml.safe_load(f)
@@ -93,17 +95,20 @@ class TwitterAPI():
 
         results = []
         # Get links from referenced tweets
+        # Record the ones we see here so we don't repeat with main results.
+        seen = set()
         if referenced_tweets:
             for tweet in referenced_tweets:
                 parsed_tweet = self.maybe_parse_arxiv_tweet(tweet)
                 if parsed_tweet is not None:
                     results.append(parsed_tweet)
+                    seen.add(parsed_tweet.tweet_id)
 
         # Get links from direct tweets. Right now we are just ignoring direct tweets
         # that point to reference tweets since their retweet/metric counts seem off.
         for tweet in tweets:
             parsed_tweet = self.maybe_parse_arxiv_tweet(tweet)
-            if parsed_tweet is not None:
+            if parsed_tweet is not None and parsed_tweet.tweet_id not in seen:
                 results.append(parsed_tweet)
         return results
 
@@ -131,11 +136,10 @@ class TwitterAPI():
             OR
             (responses, next_token)
         """
-        date_pattern = "%Y-%m-%dT%H:%M:%S.%fZ"
         if start_time:
-            start_time = datetime.strftime(start_time, date_pattern)
+            start_time = util.datetime_to_iso(start_time)
         if end_time:
-            end_time = datetime.strftime(end_time, date_pattern)
+            end_time = util.datetime_to_iso(end_time)
         result = []
         for _ in range(max_pages):
             params = {
@@ -148,7 +152,7 @@ class TwitterAPI():
                 "end_time": end_time
             }
             params = {k: v for k, v in params.items() if v is not None}
-            response = self.request_raw(self.SEARCH_ENDPOINT, params)
+            response = self.request_raw(TwitterAPIEndpoints.SEARCH_ENDPOINT, params)
             result.append(response)
             next_token = maybe_get(response, ["meta", "next_token"])
 
