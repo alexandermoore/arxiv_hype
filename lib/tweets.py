@@ -7,6 +7,8 @@ from datetime import datetime
 import re
 from typing import List, Optional
 
+from lib import arxiv
+
 class TweetCredentials(BaseModel):
     bearer_token: str = ...
     consumer_key: str = ...
@@ -23,12 +25,6 @@ class ArxivTweet(BaseModel):
     replies: int = ...
     quotes: int = ...
     impressions: int = ...
-
-    @property
-    def arxiv_urls(self):
-        return [f"https://arxiv.org/abs/{arxiv_id}" for arxiv_id in self.arxiv_ids]
-
-ARXIV_REGEX = "arxiv\.org\/(?:abs|pdf)\/([0-9]+\.[0-9]+)"
 
 def maybe_get(d, nested_keys, default=None):
     if d is None:
@@ -62,8 +58,9 @@ class TwitterAPI():
         results = []
         urls = maybe_get(tweet, ["entities", "urls"], [])
         for url in urls:
-            expanded_url = url.get("expanded_url")
-            results.extend(re.findall(ARXIV_REGEX, expanded_url))
+            arxiv_id = arxiv.maybe_arxiv_url_to_id(url.get("expanded_url"))
+            if arxiv_id:
+                results.append(arxiv_id)
         return results if len(results) else None
 
     @staticmethod
@@ -88,7 +85,7 @@ class TwitterAPI():
         )
         return arxiv_tweet
 
-    def arxiv_search(self, start_time=None, end_time=None):
+    def search_for_arxiv(self, start_time=None, end_time=None):
         result = self.api_search(query="arxiv.org", start_time=start_time, end_time=end_time)[0]
 
         tweets = result.get("data", [])
@@ -185,8 +182,4 @@ class TwitterAPI():
             }
             response = s.get(url, headers=header, params=params)
         return response.json()
-        
 
-
-api = TwitterAPI()
-print(api.arxiv_search())

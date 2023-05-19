@@ -2,3 +2,4 @@ torch
 sentence-transformers
 requests
 pydantic
+arxiv
