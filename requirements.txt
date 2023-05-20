@@ -1,5 +1,5 @@
 torch
-sentence-transformers
+transformers
 requests
 pydantic
 arxiv

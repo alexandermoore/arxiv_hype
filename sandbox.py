@@ -1,4 +1,5 @@
-from lib import tweets, arxiv, database
+from lib import twitter
+from lib import arxiv, database
 
 
 # api = tweets.TwitterAPI()
@@ -8,12 +9,20 @@ from lib import tweets, arxiv, database
 # print(results)
 # #print(results)
 
-db = database.Database()
-db.create_tables()
-# db.bulk_upsert(database.Tables.TWEET,
-#                id_cols=("tweet_id",),
-#                records=[{"tweet_id": 12345, "likes": 195}])
 
-api = tweets.TwitterAPI()
-t = api.search_for_arxiv()
-db.insert_tweets(t)
+db = database.Database()
+print(db.get_table_columns(database.Tables.ARXIV))
+quit()
+# db.create_tables()
+# # db.bulk_upsert(database.Tables.TWEET,
+# #                id_cols=("tweet_id",),
+# #                records=[{"tweet_id": 12345, "likes": 195}])
+
+# api = twitter.TwitterAPI()
+# t = api.search_for_arxiv()
+# db.insert_tweets(t)
+
+r = db.get_arxiv_ids_without_info()
+
+
+

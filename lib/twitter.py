@@ -67,12 +67,10 @@ class TwitterAPI():
 
     @staticmethod
     def maybe_parse_arxiv_tweet(tweet):
-        print("nah")
         arxiv_ids = TwitterAPI.get_arxiv_ids(tweet)
         if not arxiv_ids:
             return None
         tweet_id = tweet['id']
-        print(f"arxiv_tweet {tweet_id}")
         edited_ids = [i for i in tweet["edit_history_tweet_ids"] if i != tweet_id]
         metrics = tweet["public_metrics"]
         arxiv_tweet = ArxivTweet(
