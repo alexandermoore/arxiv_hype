@@ -33,7 +33,8 @@ def get_paper_info(arxiv_ids):
             authors=[a.name for a in r.authors],
             abstract=r.summary,
             categories=r.categories,
-            published=r.published)
+            published=r.published,
+            embedding=None)
         for i, r in enumerate(results)]
 
 def _get_paper_info_with_sleep(arxiv_ids, sleep):
@@ -77,5 +78,4 @@ def maybe_arxiv_url_to_id(url):
     if url is None:
         return None
     result = re.findall(f"arxiv\.org\/(?:abs|pdf)\/({_ARXIV_ID_PATTERN}){optional_version}", url)
-    print(result)
     return result[0] if result else None

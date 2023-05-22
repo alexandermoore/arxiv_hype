@@ -14,7 +14,7 @@ db = database.Database()
 #         #print(p.embedding)
 # db.insert_papers(papers)
 
-embedding = t.embed(["People angry and upset"])[0]
+embedding = t.embed(["Gravitational pull"])[0]
 print("Embedded")
 similar = db.get_similar_papers(embedding=embedding, top_k=5)
 print(similar.title)

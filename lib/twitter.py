@@ -1,25 +1,25 @@
 import requests
 from requests.adapters import HTTPAdapter, Retry
-from pydantic import BaseModel
+import pydantic
 import yaml
 import json
+import math
 from datetime import datetime
-import re
 from typing import List, Optional
-from enum import Enum
 
 from lib import arxiv
 from lib import util
 
-class TweetCredentials(BaseModel):
+class TweetCredentials(pydantic.BaseModel):
     bearer_token: str = ...
     consumer_key: str = ...
     consumer_secret: str = ...
     access_token: str = ...
     token_secret: str = ...
 
-class ArxivTweet(BaseModel):
+class ArxivTweet(pydantic.BaseModel):
     tweet_id: int = ...
+    created_at: datetime = ...
     arxiv_ids: List[str] = ...
     edited_tweet_ids: Optional[List[str]] = None
     likes: int = ...
@@ -29,6 +29,14 @@ class ArxivTweet(BaseModel):
     impressions: int = ...
 
 def maybe_get(d, nested_keys, default=None):
+    """For nested_keys=[k1, k2, ..., kn], returns
+       d[k1][k2]...[kn] if it exists, and `default` otherwise.
+
+    Args:
+        d: Dict
+        nested_keys: Keys to fetch
+        default: Default to return if not found.
+    """
     if d is None:
         return default
     for k in nested_keys:
@@ -37,8 +45,7 @@ def maybe_get(d, nested_keys, default=None):
             return default
     return d
 
-class TwitterAPIEndpoints(Enum):
-    SEARCH_ENDPOINT = "https://api.twitter.com/2/tweets/search/recent"
+API_SEARCH_ENDPOINT = "https://api.twitter.com/2/tweets/search/recent"
 
 class TwitterAPI():
     def __init__(self):
@@ -77,6 +84,7 @@ class TwitterAPI():
             tweet_id=tweet_id,
             arxiv_ids=arxiv_ids,
             edited_tweet_ids=edited_ids,
+            created_at=util.iso_to_datetime(tweet['created_at']),
             likes=metrics["like_count"],
             retweets=metrics["retweet_count"],
             quotes=metrics["quote_count"],
@@ -85,30 +93,42 @@ class TwitterAPI():
         )
         return arxiv_tweet
 
-    def search_for_arxiv(self, start_time=None, end_time=None):
-        result = self.api_search(query="arxiv.org", start_time=start_time, end_time=end_time)[0]
+    def search_for_arxiv(
+        self,
+        start_time=None,
+        end_time=None,
+        max_results_per_page=10,
+        max_pages=1
+    ):
+        responses = self.api_search(
+            query="arxiv.org",
+            start_time=start_time,
+            end_time=end_time,
+            max_results_per_page=max_results_per_page,
+            max_pages=max_pages)
 
-        tweets = result.get("data", [])
-        referenced_tweets = maybe_get(result, ["includes", "tweets"], [])
+        arxiv_tweets = []
+        for response in responses:
+            tweets = response.get("data", [])
+            referenced_tweets = maybe_get(response, ["includes", "tweets"], [])
 
-        results = []
-        # Get links from referenced tweets
-        # Record the ones we see here so we don't repeat with main results.
-        seen = set()
-        if referenced_tweets:
-            for tweet in referenced_tweets:
+            # Get links from referenced tweets
+            # Record the ones we see here so we don't repeat with main results.
+            seen = set()
+            if referenced_tweets:
+                for tweet in referenced_tweets:
+                    parsed_tweet = self.maybe_parse_arxiv_tweet(tweet)
+                    if parsed_tweet is not None:
+                        arxiv_tweets.append(parsed_tweet)
+                        seen.add(parsed_tweet.tweet_id)
+
+            # Get links from direct tweets. Right now we are just ignoring direct tweets
+            # that point to reference tweets since their retweet/metric counts seem off.
+            for tweet in tweets:
                 parsed_tweet = self.maybe_parse_arxiv_tweet(tweet)
-                if parsed_tweet is not None:
-                    results.append(parsed_tweet)
-                    seen.add(parsed_tweet.tweet_id)
-
-        # Get links from direct tweets. Right now we are just ignoring direct tweets
-        # that point to reference tweets since their retweet/metric counts seem off.
-        for tweet in tweets:
-            parsed_tweet = self.maybe_parse_arxiv_tweet(tweet)
-            if parsed_tweet is not None and parsed_tweet.tweet_id not in seen:
-                results.append(parsed_tweet)
-        return results
+                if parsed_tweet is not None and parsed_tweet.tweet_id not in seen:
+                    arxiv_tweets.append(parsed_tweet)
+        return arxiv_tweets
 
     def api_search(
             self,
@@ -150,9 +170,11 @@ class TwitterAPI():
                 "end_time": end_time
             }
             params = {k: v for k, v in params.items() if v is not None}
-            response = self.request_raw(TwitterAPIEndpoints.SEARCH_ENDPOINT, params)
+            response = self.request_raw(API_SEARCH_ENDPOINT, params)
             result.append(response)
             next_token = maybe_get(response, ["meta", "next_token"])
+            if not next_token:
+                break
 
         if return_next_token:
             return result, next_token
