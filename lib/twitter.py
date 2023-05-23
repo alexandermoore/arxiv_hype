@@ -108,17 +108,18 @@ class TwitterAPI():
             max_pages=max_pages)
 
         arxiv_tweets = []
+        seen = set()
         for response in responses:
             tweets = response.get("data", [])
             referenced_tweets = maybe_get(response, ["includes", "tweets"], [])
+            print(f"Processing {len(tweets)} tweets and {len(referenced_tweets)} referenced tweets...")
 
             # Get links from referenced tweets
             # Record the ones we see here so we don't repeat with main results.
-            seen = set()
             if referenced_tweets:
                 for tweet in referenced_tweets:
                     parsed_tweet = self.maybe_parse_arxiv_tweet(tweet)
-                    if parsed_tweet is not None:
+                    if parsed_tweet is not None and parsed_tweet.tweet_id not in seen:
                         arxiv_tweets.append(parsed_tweet)
                         seen.add(parsed_tweet.tweet_id)
 
@@ -128,6 +129,7 @@ class TwitterAPI():
                 parsed_tweet = self.maybe_parse_arxiv_tweet(tweet)
                 if parsed_tweet is not None and parsed_tweet.tweet_id not in seen:
                     arxiv_tweets.append(parsed_tweet)
+                    seen.add(parsed_tweet.tweet_id)
         return arxiv_tweets
 
     def api_search(
@@ -163,7 +165,7 @@ class TwitterAPI():
             params = {
                 "query": query,
                 "max_results": max_results_per_page,
-                "tweet.fields": "entities,public_metrics",
+                "tweet.fields": "entities,public_metrics,created_at",
                 "expansions": "referenced_tweets.id",
                 "next_token": next_token,
                 "start_time": start_time,
@@ -192,8 +194,8 @@ class TwitterAPI():
         Returns:
             Raw response as a dict.
         """
-        with open("private/sample_twitter_response.json", "r") as f:
-            return json.load(f)
+        # with open("private/sample_twitter_response.json", "r") as f:
+        #     return json.load(f)
 
         with requests.Session() as s:
             retries = Retry(

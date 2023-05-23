@@ -9,6 +9,8 @@ import random
 
 _ARXIV_ID_PATTERN = "[0-9]+\.[0-9]+"
 
+ARXIV_ML_CATEGORIES = "cs.CV,cs.LG,cs.CL,cs.AI,cs.NE,cs.RO,cs.MA,cs.IR".split(",")
+
 class ArxivPaper(pydantic.BaseModel):
     arxiv_id: str = ...
     title: Optional[str] = None
@@ -40,7 +42,7 @@ def get_paper_info(arxiv_ids):
 def _get_paper_info_with_sleep(arxiv_ids, sleep):
     sleep = float(sleep)
     time.sleep(sleep * (0.25 + random.random()*0.50))
-    r = arxiv.get_paper_info(arxiv_ids)
+    r = get_paper_info(arxiv_ids)
     time.sleep(sleep * (0.25 + random.random()*0.50))
     return r
 
@@ -79,3 +81,9 @@ def maybe_arxiv_url_to_id(url):
         return None
     result = re.findall(f"arxiv\.org\/(?:abs|pdf)\/({_ARXIV_ID_PATTERN}){optional_version}", url)
     return result[0] if result else None
+
+def arxiv_categories_ml_related(arxiv_categories):
+    for cat in arxiv_categories:
+        if cat[:3].lower() == "cs.":
+            return True
+    return False
