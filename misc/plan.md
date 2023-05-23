@@ -19,3 +19,14 @@ The required capabilities are as follows:
 * embeddings.py: Contains functions for computing embeddings of text.
 * TODO: something for exact match
 
+## Advanced search options
+The user should be able to do the following:
+* Configure the retrieval
+    * Decide whether documents must contain query keywords.
+        * Maybe give option for these keywords to differ from semantic query?
+    * Decide how many documents to fetch.
+    * Decide date constraints on the documents.
+    * Decide whether every document must have at least one engagement (tweet like, retweet, etc.)
+* Configure the ranking
+    * Separate sliders for lexical, semantic, popularity and recency. Allow user to adjust from 0 - 100 for each one. Show a multi part progress bar at the bottom to indicate balances.
+

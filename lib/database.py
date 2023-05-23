@@ -3,6 +3,7 @@ from lib import arxiv, util, twitter
 from typing import List, Dict, Any, Iterable
 from enum import Enum
 from psycopg_pool import ConnectionPool
+import psycopg
 import uuid
 from datetime import datetime
 from typing import NamedTuple
@@ -10,6 +11,14 @@ import json
 import pydantic
 import yaml
 
+""""
+discarding closed connection: <psycopg.Connection [BAD] at 0x7fcc04da7d30>
+ERROR:root:consuming input failed: terminating connection due to idle-session timeout
+DETAIL:  https://docs.bit.io/docs/trouble-shooting-common-connection-issues#connection-timeouts
+HINT:  Add a retry or connection pool
+SSL connection has been closed unexpectedly
+
+"""
 
 class PostgresCredentials(pydantic.BaseModel):
     dev_url: str
@@ -421,7 +430,7 @@ class Database():
                     results = [self._row_to_arxiv_paper(row, col_idx) for row in cur.fetchall()]
         return results
 
-    def get_similar_papers(self, embedding, top_k=50):
+    def get_similar_papers(self, embedding, top_k=10):
         """Returns papers with embeddings similar to `embedding` according to
         the dot product (same as cosine similarity given normalized embeddings)
 
@@ -429,7 +438,9 @@ class Database():
             embedding: Embedding to query with as a list.
             top_k: Return the `top_k` most similar results.
         """
-
+        # with open("lib/delete_this.json", "r") as f:
+        #     j = json.load(f)
+        #     return j
         cols = self.get_table_columns(Tables.ARXIV)
         cols.remove('embedding')
         col_idx = self._list_index_map(cols)
@@ -439,12 +450,20 @@ class Database():
         FROM {Tables.ARXIV} ORDER BY similarity DESC LIMIT {top_k}
         """
         results = []
-        with self._pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(q)
-                for row in cur.fetchall():
-                    paper = self._row_to_arxiv_paper(row, col_idx)
-                    results.append(SimilarityResult(paper=paper, similarity=row[-1]))
+        retries = 3
+        while retries > 0:
+            retries -= 1
+            with self._pool.connection() as conn:
+                with conn.cursor() as cur:
+                    try:
+                        cur.execute(q)
+                    except psycopg.OperationalError:
+                        self._pool.check()
+                        continue
+                    for row in cur.fetchall():
+                        paper = self._row_to_arxiv_paper(row, col_idx)
+                        results.append(SimilarityResult(paper=paper, similarity=row[-1]))
+                    break
         return results
 
     def get_latest_tweet_dt(self):
