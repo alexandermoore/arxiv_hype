@@ -10,6 +10,7 @@ from typing import List, Optional
 from lib import arxiv
 from lib import util
 
+
 class TweetCredentials(pydantic.BaseModel):
     bearer_token: str = ...
     consumer_key: str = ...
@@ -17,8 +18,9 @@ class TweetCredentials(pydantic.BaseModel):
     access_token: str = ...
     token_secret: str = ...
 
+
 class ArxivTweet(pydantic.BaseModel):
-    tweet_id: int = ...
+    tweet_id: str = ...
     created_at: datetime = ...
     arxiv_ids: List[str] = ...
     edited_tweet_ids: Optional[List[str]] = None
@@ -27,6 +29,7 @@ class ArxivTweet(pydantic.BaseModel):
     replies: int = ...
     quotes: int = ...
     impressions: int = ...
+
 
 def maybe_get(d, nested_keys, default=None):
     """For nested_keys=[k1, k2, ..., kn], returns
@@ -45,22 +48,24 @@ def maybe_get(d, nested_keys, default=None):
             return default
     return d
 
+
 API_SEARCH_ENDPOINT = "https://api.twitter.com/2/tweets/search/recent"
 
-class TwitterAPI():
+
+class TwitterAPI:
     def __init__(self):
         with open("private/tweets_auth.yaml", "r") as f:
             yml = yaml.safe_load(f)
             self.credentials = TweetCredentials.parse_obj(yml)
-    
-    # @staticmethod
-    # def is_retweet(tweet):
-    #     ref_tweets = tweet.get("referenced_tweets")
-    #     if ref_tweets:
-    #         for t in ref_tweets:
-    #             if t["type"] == "retweet":
-    #                 return True
-    #     return False
+
+    @staticmethod
+    def is_retweet(tweet):
+        ref_tweets = tweet.get("referenced_tweets")
+        if ref_tweets:
+            for t in ref_tweets:
+                if t["type"] == "retweeted":
+                    return True
+        return False
 
     @staticmethod
     def get_arxiv_ids(tweet):
@@ -77,47 +82,48 @@ class TwitterAPI():
         arxiv_ids = TwitterAPI.get_arxiv_ids(tweet)
         if not arxiv_ids:
             return None
-        tweet_id = tweet['id']
+        tweet_id = tweet["id"]
         edited_ids = [i for i in tweet["edit_history_tweet_ids"] if i != tweet_id]
         metrics = tweet["public_metrics"]
         arxiv_tweet = ArxivTweet(
             tweet_id=tweet_id,
             arxiv_ids=arxiv_ids,
             edited_tweet_ids=edited_ids,
-            created_at=util.iso_to_datetime(tweet['created_at']),
+            created_at=util.iso_to_datetime(tweet["created_at"]),
             likes=metrics["like_count"],
             retweets=metrics["retweet_count"],
             quotes=metrics["quote_count"],
             replies=metrics["reply_count"],
-            impressions=metrics["impression_count"]
+            impressions=metrics["impression_count"],
         )
         return arxiv_tweet
 
     def search_for_arxiv(
-        self,
-        start_time=None,
-        end_time=None,
-        max_results_per_page=10,
-        max_pages=1
+        self, start_time=None, end_time=None, max_results_per_page=10, max_pages=1
     ):
         responses = self.api_search(
             query="arxiv.org",
             start_time=start_time,
             end_time=end_time,
             max_results_per_page=max_results_per_page,
-            max_pages=max_pages)
+            max_pages=max_pages,
+        )
 
         arxiv_tweets = []
         seen = set()
         for response in responses:
             tweets = response.get("data", [])
             referenced_tweets = maybe_get(response, ["includes", "tweets"], [])
-            print(f"Processing {len(tweets)} tweets and {len(referenced_tweets)} referenced tweets...")
+            print(
+                f"Processing {len(tweets)} tweets and {len(referenced_tweets)} referenced tweets..."
+            )
 
             # Get links from referenced tweets
             # Record the ones we see here so we don't repeat with main results.
             if referenced_tweets:
                 for tweet in referenced_tweets:
+                    if self.is_retweet(tweet):
+                        continue
                     parsed_tweet = self.maybe_parse_arxiv_tweet(tweet)
                     if parsed_tweet is not None and parsed_tweet.tweet_id not in seen:
                         arxiv_tweets.append(parsed_tweet)
@@ -126,6 +132,8 @@ class TwitterAPI():
             # Get links from direct tweets. Right now we are just ignoring direct tweets
             # that point to reference tweets since their retweet/metric counts seem off.
             for tweet in tweets:
+                if self.is_retweet(tweet):
+                    continue
                 parsed_tweet = self.maybe_parse_arxiv_tweet(tweet)
                 if parsed_tweet is not None and parsed_tweet.tweet_id not in seen:
                     arxiv_tweets.append(parsed_tweet)
@@ -133,14 +141,15 @@ class TwitterAPI():
         return arxiv_tweets
 
     def api_search(
-            self,
-            query,
-            max_results_per_page=10,
-            max_pages=1,
-            next_token=None,
-            return_next_token=False,
-            start_time=None,
-            end_time=None):
+        self,
+        query,
+        max_results_per_page=10,
+        max_pages=1,
+        next_token=None,
+        return_next_token=False,
+        start_time=None,
+        end_time=None,
+    ):
         """Searches the Twitter API with optional pagination. Returns a list of response objects,
         one per page.
 
@@ -169,7 +178,7 @@ class TwitterAPI():
                 "expansions": "referenced_tweets.id",
                 "next_token": next_token,
                 "start_time": start_time,
-                "end_time": end_time
+                "end_time": end_time,
             }
             params = {k: v for k, v in params.items() if v is not None}
             response = self.request_raw(API_SEARCH_ENDPOINT, params)
@@ -199,13 +208,27 @@ class TwitterAPI():
 
         with requests.Session() as s:
             retries = Retry(
-                total=retries,
-                backoff_factor=0.1,
-                status_forcelist=[500, 502, 503, 504])
-            s.mount('https://', HTTPAdapter(max_retries=retries))
-            header = {
-                "Authorization": f"Bearer {self.credentials.bearer_token}"
-            }
+                total=retries, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504]
+            )
+            s.mount("https://", HTTPAdapter(max_retries=retries))
+            header = {"Authorization": f"Bearer {self.credentials.bearer_token}"}
             response = s.get(url, headers=header, params=params)
         return response.json()
 
+
+def getEmbeddedTweetHtml(tweet_id):
+    print(f"Embedding {tweet_id}")
+    with requests.Session() as s:
+        retries = Retry(
+            total=3, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504]
+        )
+        s.mount("https://", HTTPAdapter(max_retries=retries))
+        try:
+            response = s.get(
+                "https://publish.twitter.com/oembed",
+                params={"url": f"https://twitter.com/x/status/{tweet_id}"},
+            )
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            raise err
+    return response.json()["html"]

@@ -3,6 +3,7 @@ import time
 
 # t = embedding.SentenceTransformer()
 db = database.Database()
+db.create_tables()
 # papers = db.get_papers(ids_only=False, required_null_fields=["embedding"])
 # batch_size = 8
 # for i in range(0, len(papers), batch_size):
@@ -18,7 +19,7 @@ db = database.Database()
 # print("Embedded")
 # similar = db.get_similar_papers(embedding=embedding, top_k=5)
 # print(similar.title)
-db.update_arxiv_social_metrics()
+# db.update_arxiv_social_metrics()
 # print(abstract)
 # s = time.time()
 # print(len(t.embed([abstract])[0].tolist()))

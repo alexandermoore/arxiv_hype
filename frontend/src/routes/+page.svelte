@@ -4,6 +4,10 @@
 	import { fade, blur, slide } from 'svelte/transition';
 	import Icon from '@iconify/svelte';
 
+	function apiUrl(endpoint) {
+		return 'http://localhost:8000/' + endpoint;
+	}
+
 	let dt;
 	let searchQuery: string = '';
 	let lexicalSearchQuery: string = '';
@@ -35,7 +39,86 @@
 	// 	};
 	// };
 
-	function toggleModal() {}
+	let showTweetModal = false;
+	let tweetModalTweets = [];
+	let tweetModalStartIdx = 0;
+	let tweetModalNumTweets = 2;
+	let tweetModalFocusTweetsHtml = [];
+	function toggleTweetModal() {
+		showTweetModal = !showTweetModal;
+		if (!showTweetModal) {
+			tweetModalTweets = [];
+		}
+	}
+
+	// import jsonp from 'jsonp';
+
+	// async function getEmbeddedTweetHtml(tweetId) {
+	// 	try {
+	// 		let response = await axios.get(apiUrl('tweets'), {
+	// 			params: {
+	// 				embed_tweets: true
+	// 			}
+	// 		});
+	// 		return response['dat'];
+	// 	} catch (e) {
+	// 		console.log(e);
+	// 	}
+	// 	return 'Nada!';
+
+	// 	// jsonp(
+	// 	// 	'https://publish.twitter.com/oembed?url=https://twitter.com/x/status/' + tweetId,
+	// 	// 	null,
+	// 	// 	(err, data) => {
+	// 	// 		if (err) {
+	// 	// 			console.error(err.message);
+	// 	// 		} else {
+	// 	// 			console.log(data);
+	// 	// 		}
+	// 	// 	}
+	// 	// );
+	// }
+
+	async function updateTweetModalFocusTweetsHtml() {
+		let tweetIds = tweetModalTweets.slice(
+			tweetModalStartIdx,
+			tweetModalStartIdx + tweetModalNumTweets
+		);
+		try {
+			console.log({ tweetIds, tweetModalTweets });
+			let response = await axios.get(apiUrl('embed_tweets'), {
+				params: {
+					tweet_ids: tweetIds
+				}
+			});
+			tweetModalFocusTweetsHtml = response.data['data'];
+		} catch (e) {
+			console.log(e);
+		}
+	}
+	function getToggleTweetModalFn(i) {
+		const fn = async function () {
+			try {
+				let response = await axios.get(apiUrl('tweets'), {
+					params: {
+						arxiv_id: searchResults[i]['entity']['paper']['arxiv_id']
+					}
+				});
+				tweetModalTweets = response.data['data'];
+			} catch (e) {
+				console.log(e);
+				tweetModalTweets = [];
+			}
+			tweetModalStartIdx = 0;
+			updateTweetModalFocusTweetsHtml();
+			toggleTweetModal();
+		};
+		return () => fn();
+	}
+
+	function handleTweetModelNextButton() {
+		tweetModalStartIdx += tweetModalNumTweets;
+	}
 
 	function showMoreSearchResults() {
 		const el = document.querySelector('#search-result-' + (lastSearchResult - 1));
@@ -43,7 +126,7 @@
 			// el.scrollIntoView({
 			// 	behavior: 'smooth'
 			// });
-			const y = el.getBoundingClientRect().top + window.pageYOffset - 100;
+			const y = el.getBoundingClientRect().top + window.pageYOffset + 600;
 
 			window.scrollTo({ top: y, behavior: 'smooth' });
 		}
@@ -62,7 +145,7 @@
 		}
 
 		try {
-			let response = await axios.get('http://localhost:8000/search', {
+			let response = await axios.get(apiUrl('search'), {
 				params: {
 					query: query,
 					start_date: retrievalStartDate,
@@ -232,7 +315,7 @@
 					</label>
 					<label for="retrieval_topk"
 						>Number of papers to <span
-							data-tooltip="Retrieving more papers allows for more ranking flexibility, but the page may run slower."
+							data-tooltip="Retrieving more papers allows for more ranking flexibility, but the page may run more slowly."
 							>retrieve</span
 						>
 						[<b>{retrievalTopK}</b>]
@@ -250,7 +333,7 @@
 			<article>
 				<hgroup>
 					<h5>Ranking Settings</h5>
-					<h6>These settings control how papers are ranked in your browser.</h6>
+					<h6>These settings control how papers are ranked on this page.</h6>
 				</hgroup>
 				<label for="ranking_semantic"
 					>Semantic/meaning match importance
@@ -319,7 +402,7 @@
 								href={`http://www.arxiv.org/abs/${result['entity']['paper']['arxiv_id']}`}
 								>{result['entity']['paper']['title']}</a
 							>
-							<p style="opacity:80%">
+							<p style="opacity:80%" on:click={getToggleTweetModalFn(i)}>
 								<i>Submitted {formatDate(result['entity']['paper']['published'])}</i>
 							</p>
 							<p>{result['entity']['paper']['abstract']}</p>
@@ -346,6 +429,39 @@
 			>Show More</button
 		>
 	</article>
+
+	<dialog id="tweet_modal" open style="visibility: {showTweetModal ? 'visible' : 'hidden'}">
+		<article style="width:100%">
+			<header>
+				<p
+					on:click={toggleTweetModal}
+					on:keydown={toggleTweetModal}
+					aria-label="Close"
+					class="close"
+				/>
+				Tweets
+			</header>
+			{#each tweetModalFocusTweetsHtml as tweetHtml, i}
+				{#key tweetHtml}
+					<div>
+						{@html tweetHtml}
+					</div>
+				{/key}
+			{/each}
+			<div class="grid">
+				<div class="centered">
+					<button class="secondary" disabled={tweetModalStartIdx == 0}>Prev</button>
+				</div>
+				<div class="centered">
+					<button
+						class="secondary"
+						disabled={tweetModalStartIdx + tweetModalNumTweets >= tweetModalTweets.length}
+						>Next</button
+					>
+				</div>
+			</div>
+		</article>
+	</dialog>
 </main>
 
 <style>

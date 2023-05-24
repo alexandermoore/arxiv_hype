@@ -88,7 +88,7 @@ class Database:
             retweets INTEGER,
             replies INTEGER,
             quotes INTEGER,
-            impressions BIGINT
+            impressions BIGINT,
 
             PRIMARY KEY (arxiv_id)
         );
@@ -104,7 +104,7 @@ class Database:
         q.append(
             f"""
         CREATE TABLE IF NOT EXISTS {Tables.TWEET} (
-            tweet_id BIGINT,
+            tweet_id VARCHAR(20),
             created_at TIMESTAMP,
             likes INTEGER,
             retweets INTEGER,
@@ -154,7 +154,7 @@ class Database:
             f"""
         CREATE TABLE IF NOT EXISTS {Tables.ARXIV_TWEET} (
             arxiv_id VARCHAR(12),
-            tweet_id BIGINT,
+            tweet_id VARCHAR(20),
 
             PRIMARY KEY (arxiv_id, tweet_id),
 
@@ -593,3 +593,28 @@ class Database:
                     insert_cols=SOCIAL_ARXIV_COLUMNS,
                     overwrite=True,
                 )
+
+    def get_arxiv_tweet_ids(self, arxiv_id):
+        q = f"""
+        SELECT tweet_id FROM {Tables.ARXIV_TWEET}
+        WHERE arxiv_id = %s
+        
+        """
+        tweetIds = []
+        retries = 6
+        while retries > 0:
+            retries -= 1
+            with self._pool.connection() as conn:
+                with conn.cursor() as cur:
+                    try:
+                        cur.execute(q, (arxiv_id,))
+                    except psycopg.OperationalError:
+                        print(
+                            f"Database connection unsuccessful. {retries} tries left."
+                        )
+                        self._pool.check()
+                        continue
+                    for row in cur.fetchall():
+                        tweetIds.append(row[0])
+                    break
+        return tweetIds
