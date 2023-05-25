@@ -1,0 +1,8 @@
+torch
+transformers
+requests
+pydantic
+arxiv
+psycopg[binary]
+psycopg_pool
+beautifulsoup4
