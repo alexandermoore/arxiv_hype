@@ -97,6 +97,8 @@ class Database:
             ADD COLUMN text_search_vector tsvector
                     GENERATED ALWAYS AS 
                     (to_tsvector('english', coalesce(title, '') || ' ' || coalesce(abstract, ''))) STORED;
+        
+        CREATE INDEX text_search_idx ON {Tables.ARXIV} USING GIN (text_search_vector)
         """
         )
 
@@ -505,7 +507,7 @@ class Database:
         col_idx = self._list_index_map(cols)
         embedding = json.dumps(embedding, separators=(",", ":"))
 
-        where_clause = []
+        where_clause = ["embedding IS NOT NULL"]
         sql_args = []
         if start_date:
             start_date = util.datetime_to_date_str(start_date)
@@ -523,10 +525,8 @@ class Database:
             )
             sql_args.append(lexical_query)
 
-        if where_clause:
-            where_clause_str = "WHERE " + " AND ".join(where_clause)
-        else:
-            where_clause_str = ""
+        where_clause_str = "WHERE " + " AND ".join(where_clause)
+
         q = f"""
         SELECT {','.join([c for c in cols])}, 1 - (embedding <=> '{embedding}') AS similarity
         FROM {Tables.ARXIV}

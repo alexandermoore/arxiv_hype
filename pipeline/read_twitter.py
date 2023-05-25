@@ -7,7 +7,7 @@ def run(start_dt=None):
     # Search Twitter
     # TODO: Parameters like start date, number of tweets, etc.
     tweets = api.search_for_arxiv(
-        start_time=start_dt, max_results_per_page=100, max_pages=15
+        start_time=start_dt, max_results_per_page=100, max_pages=20
     )
 
     # Add results to DB

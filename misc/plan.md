@@ -30,3 +30,6 @@ The user should be able to do the following:
 * Configure the ranking
     * Separate sliders for lexical, semantic, popularity and recency. Allow user to adjust from 0 - 100 for each one. Show a multi part progress bar at the bottom to indicate balances.
 
+## Todo
+* Modularize frontend
+* Fix database disconnect issues

@@ -5,6 +5,7 @@
 	import Icon from '@iconify/svelte';
 
 	function apiUrl(endpoint) {
+		//return '/' + endpoint;
 		return 'http://localhost:8000/' + endpoint;
 	}
 
@@ -12,6 +13,7 @@
 	let searchQuery: string = '';
 	let lexicalSearchQuery: string = '';
 	let searchResults = [];
+	let searchResultsExpanded = new Set();
 	let lastSearchResult = Infinity;
 
 	let rankingSemantic = 100;
@@ -44,10 +46,12 @@
 	let tweetModalStartIdx = 0;
 	let tweetModalNumTweets = 2;
 	let tweetModalFocusTweetsHtml = [];
+	let tweetModalTitle = '';
 	function toggleTweetModal() {
 		showTweetModal = !showTweetModal;
 		if (!showTweetModal) {
 			tweetModalTweets = [];
+			tweetModalFocusTweetsHtml = [];
 		}
 	}
 
@@ -98,6 +102,7 @@
 	}
 	function getToggleTweetModalFn(i) {
 		const fn = async function () {
+			tweetModalTitle = searchResults[i]['entity']['paper']['title'];
 			try {
 				let response = await axios.get(apiUrl('tweets'), {
 					params: {
@@ -116,8 +121,30 @@
 		return () => fn();
 	}
 
+	function getExpandSearchResultFn(i) {
+		return () => {
+			let searchResult = document.querySelector('#search-result-' + i);
+			let searchResultText = document.querySelector('#search-result-text-' + i);
+			if (!searchResult || !searchResultText) {
+				return;
+			}
+			if (!searchResult.classList.contains('search-result')) {
+				searchResult.classList.add('search-result');
+				searchResultText.classList.add('fade-text');
+			} else {
+				searchResult.classList.remove('search-result');
+				searchResultText.classList.remove('fade-text');
+			}
+		};
+	}
+
 	function handleTweetModelNextButton() {
 		tweetModalStartIdx += tweetModalNumTweets;
+		updateTweetModalFocusTweetsHtml();
+	}
+	function handleTweetModelPrevButton() {
+		tweetModalStartIdx -= tweetModalNumTweets;
+		updateTweetModalFocusTweetsHtml();
 	}
 
 	function showMoreSearchResults() {
@@ -126,7 +153,7 @@
 			// el.scrollIntoView({
 			// 	behavior: 'smooth'
 			// });
-			const y = el.getBoundingClientRect().top + window.pageYOffset + 600;
+			const y = el.getBoundingClientRect().top + window.pageYOffset; // + 200;
 
 			window.scrollTo({ top: y, behavior: 'smooth' });
 		}
@@ -156,6 +183,7 @@
 				}
 			});
 			searchResults = response.data['data'];
+			searchResultsExpanded = new Set();
 			computeMaxScores();
 			rankSearchResults();
 		} catch (e) {
@@ -347,7 +375,7 @@
 						name="ranking_semantic"
 					/>
 				</label>
-				<label for="ranking_lexical"
+				<!-- <label for="ranking_lexical"
 					>Keyword match importance
 					<input
 						type="range"
@@ -359,7 +387,7 @@
 						name="ranking_lexical"
 						disabled
 					/>
-				</label>
+				</label> -->
 				<label for="ranking_popularity"
 					>Popularity importance
 					<input
@@ -395,17 +423,19 @@
 						class="search-result"
 						transition:fade={{ duration: 200, delay: i * 10 }}
 					>
-						<div class="fade-text">
+						<div id="search-result-text-{i}" class="fade-text">
 							{i + 1}.
 							<a
 								target="_blank"
 								href={`http://www.arxiv.org/abs/${result['entity']['paper']['arxiv_id']}`}
 								>{result['entity']['paper']['title']}</a
 							>
-							<p style="opacity:80%" on:click={getToggleTweetModalFn(i)}>
+							<p style="opacity:80%">
 								<i>Submitted {formatDate(result['entity']['paper']['published'])}</i>
 							</p>
-							<p>{result['entity']['paper']['abstract']}</p>
+							<div on:keydown={getExpandSearchResultFn(i)} on:click={getExpandSearchResultFn(i)}>
+								{result['entity']['paper']['abstract']}
+							</div>
 						</div>
 						<div class="grid">
 							<div>
@@ -420,6 +450,15 @@
 								<Icon class="social-icon" icon="radix-icons:chat-bubble" />
 								{result['entity']['replies']}
 							</div>
+							<div>
+								<a
+									class="view-tweets-icon"
+									on:keydown={getToggleTweetModalFn(i)}
+									on:click={getToggleTweetModalFn(i)}
+								>
+									<Icon class="social-icon" icon="basil:twitter-outline" />
+								</a>
+							</div>
 						</div>
 					</article>
 				{/key}
@@ -430,41 +469,65 @@
 		>
 	</article>
 
-	<dialog id="tweet_modal" open style="visibility: {showTweetModal ? 'visible' : 'hidden'}">
-		<article style="width:100%">
-			<header>
-				<p
-					on:click={toggleTweetModal}
-					on:keydown={toggleTweetModal}
-					aria-label="Close"
-					class="close"
-				/>
-				Tweets
-			</header>
-			{#each tweetModalFocusTweetsHtml as tweetHtml, i}
-				{#key tweetHtml}
-					<div>
-						{@html tweetHtml}
+	<div class="tweet-modal">
+		<dialog open style="visibility: {showTweetModal ? 'visible' : 'hidden'}">
+			<article style="width:100%">
+				<header>
+					<p
+						on:click={toggleTweetModal}
+						on:keydown={toggleTweetModal}
+						aria-label="Close"
+						class="close"
+					/>
+					{tweetModalTitle}
+				</header>
+				{#each tweetModalFocusTweetsHtml as tweetHtml, i}
+					{#key tweetHtml}
+						<div>
+							{@html tweetHtml}
+						</div>
+					{/key}
+				{/each}
+				<div class="grid">
+					<div class="centered">
+						<button
+							on:click={handleTweetModelPrevButton}
+							class="secondary"
+							disabled={tweetModalStartIdx == 0}>Prev</button
+						>
 					</div>
-				{/key}
-			{/each}
-			<div class="grid">
-				<div class="centered">
-					<button class="secondary" disabled={tweetModalStartIdx == 0}>Prev</button>
+					<div class="centered">
+						<button
+							on:click={handleTweetModelNextButton}
+							class="secondary"
+							disabled={tweetModalStartIdx + tweetModalNumTweets >= tweetModalTweets.length}
+							>Next</button
+						>
+					</div>
 				</div>
 				<div class="centered">
-					<button
-						class="secondary"
-						disabled={tweetModalStartIdx + tweetModalNumTweets >= tweetModalTweets.length}
-						>Next</button
-					>
+					<p>
+						[{1 + Math.floor(tweetModalStartIdx / tweetModalNumTweets)} / {Math.ceil(
+							tweetModalTweets.length / tweetModalNumTweets
+						)}]
+					</p>
 				</div>
-			</div>
-		</article>
-	</dialog>
+			</article>
+		</dialog>
+	</div>
 </main>
 
 <style>
+	.tweet-modal {
+		height: 800px;
+		display: block;
+	}
+	.view-tweets-icon {
+		color: #888888;
+	}
+	.view-tweets-icon:hover {
+		color: #1da1f2;
+	}
 	.search-result-container {
 		overflow: hidden;
 	}
@@ -477,12 +540,12 @@
 	.search-box {
 		width: 75%;
 	}
-	.search-result {
+	:global(.search-result) {
 		max-height: 400px;
 		height: 400px;
 		overflow: hidden;
 	}
-	.fade-text {
+	:global(.fade-text) {
 		-webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 99%);
 		mask-image: linear-gradient(to bottom, black 80%, transparent 99%);
 		max-height: 100%;

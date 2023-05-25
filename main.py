@@ -110,6 +110,6 @@ async def hello():
     return {"hello": "world"}
 
 
-# app.mount('/',StaticFiles(directory='frontend/dist', html=True), name='frontend')
+app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
 
 # uvicorn main:app --reload

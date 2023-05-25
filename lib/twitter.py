@@ -6,6 +6,7 @@ import json
 import math
 from datetime import datetime
 from typing import List, Optional
+import bs4
 
 from lib import arxiv
 from lib import util
@@ -231,4 +232,7 @@ def getEmbeddedTweetHtml(tweet_id):
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             raise err
-    return response.json()["html"]
+    soup = bs4.BeautifulSoup(response.json()["html"])
+    for link in soup.find_all("a"):
+        link["target"] = "_blank"
+    return str(soup)
