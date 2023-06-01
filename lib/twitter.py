@@ -1,9 +1,6 @@
 import requests
 from requests.adapters import HTTPAdapter, Retry
 import pydantic
-import yaml
-import json
-import math
 from datetime import datetime
 from typing import List, Optional
 import bs4
@@ -14,10 +11,10 @@ from lib import util
 
 class TweetCredentials(pydantic.BaseModel):
     bearer_token: str = ...
-    consumer_key: str = ...
-    consumer_secret: str = ...
-    access_token: str = ...
-    token_secret: str = ...
+    consumer_key: Optional[str] = None
+    consumer_secret: Optional[str] = None
+    access_token: Optional[str] = None
+    token_secret: Optional[str] = None
 
 
 class ArxivTweet(pydantic.BaseModel):
@@ -55,9 +52,9 @@ API_SEARCH_ENDPOINT = "https://api.twitter.com/2/tweets/search/recent"
 
 class TwitterAPI:
     def __init__(self):
-        with open("private/tweets_auth.yaml", "r") as f:
-            yml = yaml.safe_load(f)
-            self.credentials = TweetCredentials.parse_obj(yml)
+        self.credentials = TweetCredentials(
+            bearer_token=util.get_env_var("TWITTER_BEARER_TOKEN")
+        )
 
     @staticmethod
     def is_retweet(tweet):
@@ -218,7 +215,6 @@ class TwitterAPI:
 
 
 def getEmbeddedTweetHtml(tweet_id):
-    print(f"Embedding {tweet_id}")
     with requests.Session() as s:
         retries = Retry(
             total=3, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504]

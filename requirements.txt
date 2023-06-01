@@ -3,6 +3,10 @@ transformers
 requests
 pydantic
 arxiv
+fastapi==0.95.2
+gunicorn
+uvicorn==0.22.0
 psycopg[binary]
-psycopg_pool
+SQLAlchemy
 beautifulsoup4
+python-dotenv

@@ -7,15 +7,16 @@ from typing import List, Annotated
 from fastapi.middleware.cors import CORSMiddleware
 import pydantic
 
+# from fastapi.utils import tasks
 
-app = FastAPI()
+fastapi_app = FastAPI()
 
 origins = [
     "http://localhost",
     "http://localhost:5173",
 ]
 
-app.add_middleware(
+fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
@@ -26,48 +27,46 @@ app.add_middleware(
 db = database.Database()
 model = embedding.SentenceTransformer()
 # Warm up model
-model.embed(["test"])
+model.embed(["t"])
 
 
 # TODO: Fix database connection loss issue and remove this.
-# @repeat_every(seconds=60 * 3)  # 3 minutes
-# def check_db_connection_task():
-#     logging.info("Checking database")
+# @tasks.repeat_every(seconds=60 * 2)  # 2 minutes
+# async def check_db_connection_task():
+#     logging.info("Checking database connections.")
 #     db._pool.check()
 
 
-@app.post("/register")
+@fastapi_app.post("/register")
 async def register():
     return {"hi": "ok"}
 
 
-@app.get("/embed_tweets")
+@fastapi_app.get("/embed_tweets")
 async def embed_tweets(
     tweet_ids: Annotated[list[int], Query(..., alias="tweet_ids[]")]
 ):
     # don't allow more than 50 tweet IDs
     if len(tweet_ids) > 50:
         raise HTTPException(status_code=403, detail="More than 50 tweet IDs")
-    print("TWEET IDS", tweet_ids)
 
     async def get_embedded(tweet_id):
         return twitter.getEmbeddedTweetHtml(tweet_id)
 
     fns = [get_embedded(t) for t in tweet_ids]
     results = await asyncio.gather(*fns)
-    print("results", results, fns)
 
     return {"data": results}
 
 
-@app.get("/tweets")
+@fastapi_app.get("/tweets")
 async def get_tweets(arxiv_id: str):
     arxiv_id = arxiv_id[:100]
     tweet_ids = db.get_arxiv_tweet_ids(arxiv_id)
     return {"data": tweet_ids}
 
 
-@app.get("/search")
+@fastapi_app.get("/search")
 async def search(
     query: str,
     top_k: int = 10,
@@ -101,15 +100,18 @@ async def search(
         return {"data": results}
     except Exception as ex:
         logging.error(ex)
+        raise ex
         raise HTTPException(status_code=500, detail="Error performing search.")
     return {"query": query, "top_k": top_k}
 
 
-@app.get("/hello")
+@fastapi_app.get("/hello")
 async def hello():
     return {"hello": "world"}
 
 
-app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+fastapi_app.mount(
+    "/", StaticFiles(directory="frontend/dist", html=True), name="frontend"
+)
 
 # uvicorn main:app --reload

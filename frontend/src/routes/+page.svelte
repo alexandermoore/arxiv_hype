@@ -5,15 +5,20 @@
 	import Icon from '@iconify/svelte';
 
 	function apiUrl(endpoint) {
-		//return '/' + endpoint;
-		return 'http://localhost:8000/' + endpoint;
+		return '/' + endpoint;
+		//return 'http://localhost:8000/' + endpoint;
 	}
+
+	let pageInfo = {
+		title: 'ArXiv Hype',
+		description: 'Search a selection of papers that have been mentioned on Twitter.',
+		github: 'https://www.github.com/alexanderm/arxiv_hype'
+	};
 
 	let dt;
 	let searchQuery: string = '';
 	let lexicalSearchQuery: string = '';
 	let searchResults = [];
-	let searchResultsExpanded = new Set();
 	let lastSearchResult = Infinity;
 
 	let rankingSemantic = 100;
@@ -89,7 +94,7 @@
 			tweetModalStartIdx + tweetModalNumTweets
 		);
 		try {
-			console.log({ tweetIds, tweetModalTweets });
+			//console.log({ tweetIds, tweetModalTweets });
 			let response = await axios.get(apiUrl('embed_tweets'), {
 				params: {
 					tweet_ids: tweetIds
@@ -183,7 +188,6 @@
 				}
 			});
 			searchResults = response.data['data'];
-			searchResultsExpanded = new Set();
 			computeMaxScores();
 			rankSearchResults();
 		} catch (e) {
@@ -208,7 +212,6 @@
 				maxDate = published;
 			}
 		});
-		console.log('md', maxDate);
 	}
 
 	function rawPopularityScore(result) {
@@ -223,25 +226,24 @@
 	function decayedRecencyScore(date, maxDate) {
 		const oneMonth = 30 * 24 * 3600 * 1000;
 		const diff = maxDate - date;
-		return Math.pow(0.5, diff / oneMonth);
+		return Math.pow(0.5, diff / (3 * oneMonth));
 	}
 
 	function getSearchResultScore(result, maxSemanticScore, maxPopularityScore, maxDate) {
 		let popularityScore = rawPopularityScore(result);
 		let semanticSimilarity = result['similarity'];
-		console.log({ semanticSimilarity, maxSemanticScore, popularityScore, maxPopularityScore });
+		//console.log({ semanticSimilarity, maxSemanticScore, popularityScore, maxPopularityScore });
 		let published = new Date(result['entity']['paper']['published']).getTime();
 
 		const wSemanticScore = (rankingSemantic * semanticSimilarity) / maxSemanticScore;
 		const wPopularityScore = (rankingPopularity * popularityScore) / maxPopularityScore;
 		const wRecencyScore = rankingRecency * decayedRecencyScore(published, maxDate);
 
-		console.log({ wSemanticScore, wPopularityScore, wRecencyScore });
+		//console.log({ wSemanticScore, wPopularityScore, wRecencyScore });
 		return wSemanticScore + wPopularityScore + wRecencyScore;
 	}
 
 	function rankSearchResults() {
-		console.log('ranking...');
 		lastSearchResult = 10;
 		let resultScores = searchResults.map((result) => {
 			return {
@@ -271,13 +273,17 @@
 	}
 </script>
 
+<svelte:head>
+	<title>{pageInfo.title}</title>
+</svelte:head>
+
 <main class="container">
 	<article>
 		<!-- Header -->
 		<header>
 			<hgroup class="centered">
-				<h1>ArXiv Hype</h1>
-				<h2>Search a selection of papers that have been mentioned on Twitter.</h2>
+				<h1>{pageInfo.title}</h1>
+				<h2>{pageInfo.description}</h2>
 			</hgroup>
 		</header>
 		<div class="centered">

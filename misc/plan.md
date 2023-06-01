@@ -32,4 +32,5 @@ The user should be able to do the following:
 
 ## Todo
 * Modularize frontend
-* Fix database disconnect issues
+* Fix database connection issues [fixed]
+* Fix model caching [workaround-- include model in image for now]

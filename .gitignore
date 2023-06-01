@@ -1,2 +1,6 @@
 private/**/*
 *.pyc
+.env
+frontend/dist
+__pycache__
+models/temp

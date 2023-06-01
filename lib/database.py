@@ -2,14 +2,16 @@
 from lib import arxiv, util, twitter
 from typing import List, Dict, Any, Iterable
 from enum import Enum
-from psycopg_pool import ConnectionPool
+
+# from psycopg_pool import ConnectionPool
 import psycopg
+from sqlalchemy import create_engine
 import uuid
 from datetime import datetime
 from typing import NamedTuple, Optional
 import json
 import pydantic
-import yaml
+import logging
 
 """"
 discarding closed connection: <psycopg.Connection [BAD] at 0x7fcc04da7d30>
@@ -22,8 +24,7 @@ SSL connection has been closed unexpectedly
 
 
 class PostgresCredentials(pydantic.BaseModel):
-    dev_url: str
-    prod_url: str
+    url: str = ...
 
 
 class Tables(str, Enum):
@@ -67,10 +68,20 @@ class Database:
     """Contains methods for interacting with the backend PostgreSQL database."""
 
     def __init__(self):
-        with open("private/postgres_auth.yaml", "r") as f:
-            credentials = PostgresCredentials.parse_obj(yaml.safe_load(f))
-        self._pool = ConnectionPool(credentials.dev_url)
+        credentials = PostgresCredentials(
+            url=util.get_env_var("POSTGRES_URL").replace("postgresql://", "")
+        )
+        self._engine = create_engine(
+            f"postgresql+psycopg://{credentials.url}",
+            max_overflow=5,
+            pool_size=5,
+            pool_pre_ping=True,
+        )
+        # self._pool = ConnectionPool(credentials.url, max_idle=4 * 60)
         self._table_columns = {}
+
+    def _pool_conn(self):
+        return self._engine.connect()
 
     def create_tables(self, embedding_dim=384):
         """Creates the necessary tables, assuming embeddings are `embedding_dim` size."""
@@ -171,14 +182,16 @@ class Database:
         """
         )
 
-        with self._pool.connection() as conn:
+        with self._pool_conn() as connection:
+            conn = connection.connection
             for t in q:
                 conn.execute(t)
             conn.commit()
 
     def delete_tables(self):
         """Deletes all the tables."""
-        with self._pool.connection() as conn:
+        with self._pool_conn() as connection:
+            conn = connection.connection
             for t in Tables:
                 conn.execute(f"DROP TABLE IF EXISTS {t} CASCADE")
 
@@ -188,7 +201,8 @@ class Database:
         """
         if table not in self._table_columns:
             generated_cols = GENERATED_COLUMNS.get(table, set())
-            with self._pool.connection() as conn:
+            with self._pool_conn() as connection:
+                conn = connection.connection
                 with conn.cursor() as cur:
                     cur.execute(f"SELECT * FROM {table} LIMIT 0")
                     self._table_columns[table] = [
@@ -205,7 +219,8 @@ class Database:
         self, table, records: Iterable[Dict[str, Any]], insert_cols=None, overwrite=True
     ):
         """Performs a bulk insert of rows into the database. See _bulk_insert."""
-        with self._pool.connection() as conn:
+        with self._pool_conn() as connection:
+            conn = connection.connection
             with conn.cursor() as cursor:
                 self._bulk_insert(
                     table,
@@ -214,6 +229,7 @@ class Database:
                     overwrite=overwrite,
                     cursor=cursor,
                 )
+            conn.commit()
 
     def _bulk_insert(
         self,
@@ -311,7 +327,8 @@ class Database:
         for t in tweets:
             tweets_to_delete.update(t.edited_tweet_ids)
 
-        with self._pool.connection() as conn:
+        with self._pool_conn() as connection:
+            conn = connection.connection
             with conn.cursor() as cur:
                 # Insert tweets
                 self._bulk_insert(
@@ -340,6 +357,7 @@ class Database:
                     overwrite=False,
                     cursor=cur,
                 )
+            conn.commit()
 
     def insert_papers(self, papers: List[arxiv.ArxivPaper], insert_type=None):
         """Inserts papers into the database. Also updates author and category tables.
@@ -380,7 +398,8 @@ class Database:
                     for a in p.authors:
                         yield {"arxiv_id": p.arxiv_id, "author": a[:MAX_AUTHOR_LEN]}
 
-        with self._pool.connection() as conn:
+        with self._pool_conn() as connection:
+            conn = connection.connection
             with conn.cursor() as cur:
                 # Insert into ARXIV table
                 self._bulk_insert(
@@ -406,6 +425,7 @@ class Database:
                     overwrite=False,
                     cursor=cur,
                 )
+            conn.commit()
 
     def _list_index_map(self, lst):
         return {c: i for i, c in enumerate(lst)}
@@ -465,7 +485,8 @@ class Database:
             if not include_embeddings:
                 select.remove("embedding")
 
-        with self._pool.connection() as conn:
+        with self._pool_conn() as connection:
+            conn = connection.connection
             with conn.cursor() as cur:
                 cur.execute(
                     f"""
@@ -534,31 +555,23 @@ class Database:
         ORDER BY similarity DESC LIMIT {top_k}
         """
         results = []
-        retries = 6
-        while retries > 0:
-            retries -= 1
-            with self._pool.connection() as conn:
-                with conn.cursor() as cur:
-                    try:
-                        cur.execute(q, sql_args)
-                    except psycopg.OperationalError:
-                        print(
-                            f"Database connection unsuccessful. {retries} tries left."
-                        )
-                        self._pool.check()
-                        continue
-                    for row in cur.fetchall():
-                        full_result = self._row_to_arxiv_entity(row, col_idx)
-                        results.append(
-                            SimilarityResult(entity=full_result, similarity=row[-1])
-                        )
-                    break
+        with self._pool_conn() as connection:
+            conn = connection.connection
+            with conn.cursor() as cur:
+                cur.execute(q, sql_args)
+                for row in cur.fetchall():
+                    full_result = self._row_to_arxiv_entity(row, col_idx)
+                    results.append(
+                        SimilarityResult(entity=full_result, similarity=row[-1])
+                    )
+
         return results
 
     def get_latest_tweet_dt(self):
         """Returns the creation date of the latest tweet in the database."""
         q = "SELECT MAX(created_at) FROM tweet;"
-        with self._pool.connection() as conn:
+        with self._pool_conn() as connection:
+            conn = connection.connection
             with conn.cursor() as cur:
                 cur.execute(q)
                 res = cur.fetchone()
@@ -574,7 +587,8 @@ class Database:
         ON at.tweet_id = t.tweet_id 
         GROUP BY at.arxiv_id
         """
-        with self._pool.connection() as conn:
+        with self._pool_conn() as connection:
+            conn = connection.connection
             with conn.cursor() as cur:
                 cur.execute(q)
                 results = cur.fetchall()
@@ -593,6 +607,7 @@ class Database:
                     insert_cols=SOCIAL_ARXIV_COLUMNS,
                     overwrite=True,
                 )
+            conn.commit()
 
     def get_arxiv_tweet_ids(self, arxiv_id):
         q = f"""
@@ -601,20 +616,10 @@ class Database:
         
         """
         tweetIds = []
-        retries = 6
-        while retries > 0:
-            retries -= 1
-            with self._pool.connection() as conn:
-                with conn.cursor() as cur:
-                    try:
-                        cur.execute(q, (arxiv_id,))
-                    except psycopg.OperationalError:
-                        print(
-                            f"Database connection unsuccessful. {retries} tries left."
-                        )
-                        self._pool.check()
-                        continue
-                    for row in cur.fetchall():
-                        tweetIds.append(row[0])
-                    break
+        with self._pool_conn() as connection:
+            conn = connection.connection
+            with conn.cursor() as cur:
+                cur.execute(q, (arxiv_id,))
+                for row in cur.fetchall():
+                    tweetIds.append(row[0])
         return tweetIds

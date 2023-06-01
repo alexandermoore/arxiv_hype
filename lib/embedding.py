@@ -1,12 +1,16 @@
 from transformers import AutoTokenizer, AutoModel
 import torch
 import torch.nn.functional as F
+import os
+from lib import util
 
 
 class SentenceTransformer:
     def __init__(self, model="sentence-transformers/all-MiniLM-L6-v2"):
-        self._tokenizer = AutoTokenizer.from_pretrained(model)
-        self._model = AutoModel.from_pretrained(model)
+        cache_dir = util.get_env_var("TORCH_HOME", must_exist=True)
+        print(f"Using pytorch cache directory: {cache_dir}")
+        self._tokenizer = AutoTokenizer.from_pretrained(model, cache_dir=cache_dir)
+        self._model = AutoModel.from_pretrained(model, cache_dir=cache_dir)
 
     @staticmethod
     def _mean_pooling(model_output, attention_mask):
@@ -21,6 +25,8 @@ class SentenceTransformer:
         )
 
     def embed(self, sentences):
+        if not len(sentences):
+            return []
         encoded_input = self._tokenizer(
             sentences, padding=True, truncation=True, return_tensors="pt"
         )
