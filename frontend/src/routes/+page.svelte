@@ -20,6 +20,7 @@
 	let lexicalSearchQuery: string = '';
 	let searchResults = [];
 	let lastSearchResult = Infinity;
+	let searchIsLoading = false;
 
 	let rankingSemantic = 100;
 	let rankingLexical = 0;
@@ -175,7 +176,7 @@
 		} else {
 			lexicalSearchQueryFinal = undefined;
 		}
-
+		searchIsLoading = true;
 		try {
 			let response = await axios.get(apiUrl('search'), {
 				params: {
@@ -193,6 +194,7 @@
 		} catch (e) {
 			console.log(e);
 		}
+		searchIsLoading = false;
 	}
 
 	function computeMaxScores() {
@@ -294,7 +296,12 @@
 				placeholder="Search..."
 				bind:value={searchQuery}
 			/>
-			<a href="#" role="button" on:click={handleSearchWithButton}>Search</a>
+			<a
+				href="#"
+				role="button"
+				on:click={handleSearchWithButton}
+				aria-busy={searchIsLoading ? 'true' : 'false'}>Search</a
+			>
 		</div>
 
 		<!-- Advanced search settings -->

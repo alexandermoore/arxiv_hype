@@ -14,11 +14,15 @@ primary_region = "ewr"
   TORCH_HOME = "models/pytorch_hub"
 
 [http_service]
+  processes = ["web"]
   internal_port = 8080
   force_https = true
   auto_stop_machines = true
   auto_start_machines = true
   min_machines_running = 0
+
+[processes]
+  web = "gunicorn -k uvicorn.workers.UvicornWorker main:fastapi_app"
 
 # [mounts]
 #  source="arxiv_hype_data"
