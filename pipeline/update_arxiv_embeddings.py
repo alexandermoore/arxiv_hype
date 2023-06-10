@@ -1,14 +1,17 @@
 from lib import arxiv, database, embedding
 
 
-def run():
+def run(embedding_model=None):
     def embed_papers(papers):
         abstracts = [p.abstract for p in papers]
         embeddings = iter(t.embed(abstracts))
         for p in papers:
             p.embedding = next(embeddings)
 
-    t = embedding.SentenceTransformer()
+    if embedding_model is None:
+        t = embedding.SentenceTransformer()
+    else:
+        t = embedding_model
     db = database.Database()
     papers = db.get_papers(ids_only=False, required_null_fields=["embedding"])
     papers = [r.paper for r in papers]

@@ -1,11 +1,16 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from lib import database, embedding, util, twitter
+from pipeline import run_pipeline
 import logging
 import asyncio
 from typing import List, Annotated
 from fastapi.middleware.cors import CORSMiddleware
 import pydantic
+from datetime import datetime, timedelta
+import hashlib
+import hmac
+import concurrent
 
 # from fastapi.utils import tasks
 
@@ -25,9 +30,41 @@ fastapi_app.add_middleware(
 )
 
 db = database.Database()
-model = embedding.SentenceTransformer()
-# Warm up model
-model.embed(["t"])
+
+
+class ModelHandler:
+    def __init__(self):
+        self._is_loaded_event = asyncio.Event()
+        self._model = None
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(None, self.load)
+
+    def load(self):
+        model = embedding.SentenceTransformer()
+        model.embed(["t"])
+        print("Model loading complete.")
+        self._model = model
+        self._is_loaded_event.set()
+
+    async def get_embedding_model(self):
+        await self._is_loaded_event.wait()
+        return self._model
+
+
+model_handler = ModelHandler()
+
+
+async def get_embedding_model():
+    global _MODEL
+    if _MODEL is None:
+        _MODEL = embedding.SentenceTransformer()
+        _MODEL.embed(["t"])
+    return _MODEL
+
+
+# model = embedding.SentenceTransformer()
+# # Warm up model (double check if need to do this)
+# model.embed(["t"])
 
 
 # TODO: Fix database connection loss issue and remove this.
@@ -37,13 +74,32 @@ model.embed(["t"])
 #     db._pool.check()
 
 
-@fastapi_app.post("/register")
-async def register():
-    return {"hi": "ok"}
+def _verify_github_signature(payload_body, secret_token, signature_header):
+    """Verify that the payload was sent from GitHub by validating SHA256.
+    See: https://docs.github.com/en/webhooks-and-events/webhooks/securing-your-webhooks
+
+    Raise and return 403 if not authorized.
+
+    Args:
+        payload_body: original request body to verify (request.body())
+        secret_token: GitHub app webhook token (WEBHOOK_SECRET)
+        signature_header: header received from GitHub (x-hub-signature-256)
+    """
+    if not signature_header:
+        raise HTTPException(
+            status_code=403, detail="x-hub-signature-256 header is missing!"
+        )
+    hash_object = hmac.new(
+        secret_token.encode("utf-8"), msg=payload_body, digestmod=hashlib.sha256
+    )
+    expected_signature = "sha256=" + hash_object.hexdigest()
+    if not hmac.compare_digest(expected_signature, signature_header):
+        raise HTTPException(status_code=403, detail="Request signatures didn't match!")
 
 
 @fastapi_app.get("/embed_tweets")
 async def embed_tweets(
+    # to handle format of tweet_ids[]= rather than tweet_ids=
     tweet_ids: Annotated[list[int], Query(..., alias="tweet_ids[]")]
 ):
     # don't allow more than 50 tweet IDs
@@ -88,6 +144,7 @@ async def search(
         start_date = util.maybe_date_str_to_datetime(start_date)
         end_date = util.maybe_date_str_to_datetime(end_date)
         top_k = min(max(1, top_k), 500)
+        model = await model_handler.get_embedding_model()
         embedding = model.embed([query])[0]
         results = db.get_similar_papers(
             embedding,
@@ -103,6 +160,36 @@ async def search(
         raise ex
         raise HTTPException(status_code=500, detail="Error performing search.")
     return {"query": query, "top_k": top_k}
+
+
+def _run_pipeline(start_dt=None, embedding_model=None):
+    print(start_dt, embedding_model)
+    run_pipeline.run(start_dt=start_dt, embedding_model=embedding_model)
+
+
+@fastapi_app.post("/gh_webhook_update_db")
+async def gh_webhook_update_db(request: Request):
+    # Verify request
+    _verify_github_signature(
+        payload_body=await request.body(),
+        secret_token=util.get_env_var("GITHUB_WEBHOOK_SECRET", must_exist=True),
+        signature_header=request.headers.get("x-hub-signature-256"),
+    )
+
+    for i in range(20):
+        print(f"Hello world {i}!")
+    start_dt = datetime.today() - timedelta(days=7)
+
+    # Start a separate task for updating event
+    loop = asyncio.get_running_loop()
+    # with concurrent.futures.ProcessPoolExecutor() as pool:
+    loop.run_in_executor(
+        None, _run_pipeline, start_dt, await model_handler.get_embedding_model()
+    )
+    # loop = asyncio.get_running_loop()
+    # loop.create_task(_run_pipeline(start_dt=start_dt, embedding_model=model))
+
+    print("RETURNING FROM GH WEBHOOK UPDATE")
 
 
 @fastapi_app.get("/hello")

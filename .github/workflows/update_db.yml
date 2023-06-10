@@ -1,6 +1,9 @@
-name: learn-github-actions
-run-name: ${{ github.actor }} is learning GitHub Actions
-on: [workflow_dispatch]
+name: update-db
+run-name: Pull new data and update databases.
+# on: [workflow_dispatch]
+on:
+  schedule:
+    - cron: "0 9 * * *"
 jobs:
   check-bats-version:
     runs-on: ubuntu-latest

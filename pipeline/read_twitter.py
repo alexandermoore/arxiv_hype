@@ -1,14 +1,16 @@
 from lib import database, twitter
 
 
-def run(start_dt=None):
+def run(start_dt=None, max_results_per_page=100, max_pages=20):
     api = twitter.TwitterAPI()
     db = database.Database()
 
     # Search Twitter
     # TODO: Parameters like start date, number of tweets, etc.
     tweets = api.search_for_arxiv(
-        start_time=start_dt, max_results_per_page=100, max_pages=20
+        start_time=start_dt,
+        max_results_per_page=max_results_per_page,
+        max_pages=max_pages,
     )
 
     # Add results to DB
