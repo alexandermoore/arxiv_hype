@@ -11,6 +11,7 @@ _ARXIV_ID_PATTERN = "[0-9]+\.[0-9]+"
 
 ARXIV_ML_CATEGORIES = "cs.CV,cs.LG,cs.CL,cs.AI,cs.NE,cs.RO,cs.MA,cs.IR".split(",")
 
+
 class ArxivPaper(pydantic.BaseModel):
     arxiv_id: str = ...
     title: Optional[str] = None
@@ -27,7 +28,7 @@ class ArxivPaper(pydantic.BaseModel):
 
 
 def get_paper_info(arxiv_ids):
-    results = arxiv.Search(id_list=arxiv_ids, max_results=float('inf')).results()
+    results = arxiv.Search(id_list=arxiv_ids, max_results=float("inf")).results()
     return [
         ArxivPaper(
             arxiv_id=arxiv_ids[i],
@@ -36,15 +37,19 @@ def get_paper_info(arxiv_ids):
             abstract=r.summary,
             categories=r.categories,
             published=r.published,
-            embedding=None)
-        for i, r in enumerate(results)]
+            embedding=None,
+        )
+        for i, r in enumerate(results)
+    ]
+
 
 def _get_paper_info_with_sleep(arxiv_ids, sleep):
     sleep = float(sleep)
-    time.sleep(sleep * (0.25 + random.random()*0.50))
+    time.sleep(sleep * (0.25 + random.random() * 0.50))
     r = get_paper_info(arxiv_ids)
-    time.sleep(sleep * (0.25 + random.random()*0.50))
+    time.sleep(sleep * (0.25 + random.random() * 0.50))
     return r
+
 
 def get_paper_info_parallel(arxiv_ids, max_per_request=50, max_workers=3, sleep=5):
     results = []
@@ -53,10 +58,9 @@ def get_paper_info_parallel(arxiv_ids, max_per_request=50, max_workers=3, sleep=
         future_to_idx = {}
         for i in range(0, len(arxiv_ids), max_per_request):
             future = executor.submit(
-                _get_paper_info_with_sleep,
-                arxiv_ids[i:i+max_per_request],
-                sleep)
-            future_to_idx[future] = (i, i+max_per_request)
+                _get_paper_info_with_sleep, arxiv_ids[i : i + max_per_request], sleep
+            )
+            future_to_idx[future] = (i, i + max_per_request)
         for future in futures.as_completed(future_to_idx):
             s, e = future_to_idx[future]
             try:
@@ -75,12 +79,16 @@ def maybe_arxiv_id_to_url(arxiv_id):
     # TODO: Check arxiv_id is in valid format
     return f"https://arxiv.org/abs/{arxiv_id}"
 
-def maybe_arxiv_url_to_id(url):
+
+def maybe_text_to_arxiv_ids(txt):
     optional_version = r"v{0,1}"
-    if url is None:
+    if txt is None:
         return None
-    result = re.findall(f"arxiv\.org\/(?:abs|pdf)\/({_ARXIV_ID_PATTERN}){optional_version}", url)
-    return result[0] if result else None
+    result = re.findall(
+        f"arxiv\.org\/(?:abs|pdf)\/({_ARXIV_ID_PATTERN}){optional_version}", txt
+    )
+    return result
+
 
 def arxiv_categories_ml_related(arxiv_categories):
     for cat in arxiv_categories:

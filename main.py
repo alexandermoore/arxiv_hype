@@ -163,12 +163,15 @@ async def search(
 
 
 def _run_pipeline(start_dt=None, embedding_model=None):
-    print(start_dt, embedding_model)
+    print(
+        f"Running pipeline with start_dt={start_dt}, embedding_model={embedding_model}"
+    )
     run_pipeline.run(start_dt=start_dt, embedding_model=embedding_model)
 
 
 @fastapi_app.post("/gh_webhook_update_db")
 async def gh_webhook_update_db(request: Request):
+    print("STARTING GH WEBHOOK UPDATE")
     # Verify request
     _verify_github_signature(
         payload_body=await request.body(),
@@ -176,9 +179,7 @@ async def gh_webhook_update_db(request: Request):
         signature_header=request.headers.get("x-hub-signature-256"),
     )
 
-    for i in range(20):
-        print(f"Hello world {i}!")
-    start_dt = datetime.today() - timedelta(days=7)
+    start_dt = datetime.today() - timedelta(days=365)
 
     # Start a separate task for updating event
     loop = asyncio.get_running_loop()

@@ -16,7 +16,7 @@ def run(start_dt=None, max_results_per_page=100, max_pages=20):
     # Add results to DB
     print(f"Found {len(tweets)} tweets.")
     db.insert_tweets(tweets)
-    db.update_arxiv_social_metrics()
+    db.update_arxiv_social_metrics(update_twitter=True)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 # Note: the module name is psycopg, not psycopg3
-from lib import arxiv, util, twitter
+from lib import arxiv, util, twitter, hnews
 from typing import List, Dict, Any, Iterable
 from enum import Enum
 
@@ -33,15 +33,21 @@ class Tables(str, Enum):
     ARXIV_CATEGORY = "ArxivCategory"
     TWEET = "Tweet"
     ARXIV_TWEET = "ArxivTweet"
+    HNEWS = "HNews"
+    ARXIV_HNEWS = "ArxivHNews"
 
 
 class ArxivEntity(pydantic.BaseModel):
     paper: arxiv.ArxivPaper
+    # Twitter
     likes: Optional[int] = None
     retweets: Optional[int] = None
     replies: Optional[int] = None
     quotes: Optional[int] = None
     impressions: Optional[int] = None
+    # HNews
+    points: Optional[int] = None
+    num_comments: Optional[int] = None
 
 
 class SimilarityResult(pydantic.BaseModel):
@@ -55,13 +61,23 @@ PRIMARY_KEYS = {
     Tables.ARXIV_CATEGORY: ("arxiv_id", "category"),
     Tables.TWEET: ("tweet_id",),
     Tables.ARXIV_TWEET: ("arxiv_id", "tweet_id"),
+    Tables.HNEWS: ("hnews_id",),
+    Tables.ARXIV_HNEWS: ("hnews_id", "arxiv_id"),
 }
 
 GENERATED_COLUMNS = {Tables.ARXIV: ("text_search_vector",)}
 
 MAX_AUTHOR_LEN = 256
 MAX_CATEGORY_LEN = 32
-SOCIAL_ARXIV_COLUMNS = ["likes", "retweets", "replies", "quotes", "impressions"]
+TWITTER_SOCIAL_ARXIV_COLUMNS = [
+    "likes",
+    "retweets",
+    "replies",
+    "quotes",
+    "impressions",
+]
+HNEWS_SOCIAL_ARXIV_COLUMNS = ["points", "num_comments"]
+SOCIAL_ARXIV_COLUMNS = TWITTER_SOCIAL_ARXIV_COLUMNS + HNEWS_SOCIAL_ARXIV_COLUMNS
 
 
 class Database:
@@ -95,11 +111,13 @@ class Database:
             abstract TEXT,
             published_ts TIMESTAMP,
             embedding vector({embedding_dim}),
-            likes INTEGER,
-            retweets INTEGER,
-            replies INTEGER,
-            quotes INTEGER,
-            impressions BIGINT,
+            tw_likes INTEGER,
+            tw_retweets INTEGER,
+            tw_replies INTEGER,
+            tw_quotes INTEGER,
+            tw_impressions BIGINT,
+            hn_points INTEGER,
+            hn_num_comments INTEGER,
 
             PRIMARY KEY (arxiv_id)
         );
@@ -112,6 +130,7 @@ class Database:
         CREATE INDEX text_search_idx ON {Tables.ARXIV} USING GIN (text_search_vector)
         """
         )
+        q.pop()
 
         # Tweet Table Query
         q.append(
@@ -126,6 +145,20 @@ class Database:
             impressions BIGINT,
 
             PRIMARY KEY (tweet_id)
+        );
+        """
+        )
+
+        # HNews Table Query
+        q.append(
+            f"""
+        CREATE TABLE IF NOT EXISTS {Tables.HNEWS} (
+            hnews_id VARCHAR(20),
+            created_at TIMESTAMP,
+            points INTEGER,
+            num_comments INTEGER,
+
+            PRIMARY KEY (hnews_id)
         );
         """
         )
@@ -182,6 +215,26 @@ class Database:
         """
         )
 
+        # Arxiv HNews Table Query
+        q.append(
+            f"""
+        CREATE TABLE IF NOT EXISTS {Tables.ARXIV_HNEWS} (
+            arxiv_id VARCHAR(12),
+            hnews_id VARCHAR(20),
+
+            PRIMARY KEY (arxiv_id, hnews_id),
+
+            CONSTRAINT fk_arxivhnews_arxiv
+                FOREIGN KEY (arxiv_id)
+                REFERENCES {Tables.ARXIV}(arxiv_id),
+
+            CONSTRAINT fk_arxivhnews_hnews
+                FOREIGN KEY (hnews_id)
+                REFERENCES {Tables.HNEWS}(hnews_id)
+        );
+        """
+        )
+
         with self._pool_conn() as connection:
             conn = connection.connection
             for t in q:
@@ -194,6 +247,7 @@ class Database:
             conn = connection.connection
             for t in Tables:
                 conn.execute(f"DROP TABLE IF EXISTS {t} CASCADE")
+            conn.commit()
 
     def get_table_columns(self, table: Tables):
         """Returns a list of a table's columns. Runs a query on the first call
@@ -359,14 +413,65 @@ class Database:
                 )
             conn.commit()
 
+    def insert_hnews(self, posts: List[hnews.HNewsPost]):
+        def posts_to_insert():
+            for t in posts:
+                yield {
+                    "hnews_id": t.hnews_id,
+                    "points": t.points,
+                    "num_comments": t.num_comments,
+                    "created_at": t.created_at,
+                }
+
+        def papers_to_insert():
+            for t in posts:
+                for i in t.arxiv_ids:
+                    yield {"arxiv_id": i}
+
+        def references_to_insert():
+            for t in posts:
+                for i in t.arxiv_ids:
+                    yield {"hnews_id": t.hnews_id, "arxiv_id": i}
+
+        with self._pool_conn() as connection:
+            conn = connection.connection
+            with conn.cursor() as cur:
+                # Insert posts
+                self._bulk_insert(
+                    table=Tables.HNEWS,
+                    records=posts_to_insert(),
+                    overwrite=True,
+                    cursor=cur,
+                )
+
+                # Insert blank papers into arxiv table if any not present.
+                # We can handle arxiv papers later.
+                self._bulk_insert(
+                    table=Tables.ARXIV,
+                    records=papers_to_insert(),
+                    overwrite=False,
+                    cursor=cur,
+                )
+
+                # Update reference table
+                self._bulk_insert(
+                    table=Tables.ARXIV_HNEWS,
+                    records=references_to_insert(),
+                    overwrite=False,
+                    cursor=cur,
+                )
+            conn.commit()
+
     def insert_papers(self, papers: List[arxiv.ArxivPaper], insert_type=None):
         """Inserts papers into the database. Also updates author and category tables.
 
         Args:
             papers: Papers to insert.
             insert_type: Can be None to insert all paper attributes (excluding social), "embedding" to only
-                insert embeddings, or "social" to only insert likes, retweets, etc.
+                insert embeddings
         """
+        if not len(papers):
+            return
         if insert_type is None:
             insert_cols = ["arxiv_id", "abstract", "title", "published_ts", "embedding"]
         elif insert_type == "embeddings":
@@ -439,9 +544,16 @@ class Database:
         )
         if "embedding" in col_idx:
             paper.embedding = row[col_idx["embedding"]]
-        final = {
-            col: row[col_idx[col]] for col in SOCIAL_ARXIV_COLUMNS if col in col_idx
-        }
+        final = {}
+        socials = [
+            ("tw", TWITTER_SOCIAL_ARXIV_COLUMNS),
+            ("hn", HNEWS_SOCIAL_ARXIV_COLUMNS),
+        ]
+        for prefix, cols in socials:
+            for col in cols:
+                prefix_col = f"{prefix}_{col}"
+                if prefix_col in col_idx:
+                    final[col] = row[col_idx[prefix_col]]
         final["paper"] = paper
         return ArxivEntity.parse_obj(final)
 
@@ -538,7 +650,7 @@ class Database:
             where_clause.append(f"DATE(published_ts) <= '{end_date}'")
         if require_social:
             where_clause.append(
-                f"(likes > 0 OR retweets > 0 OR quotes > 0 OR replies > 0)"
+                f"(tw_likes > 0 OR tw_retweets > 0 OR tw_quotes > 0 OR tw_replies > 0 OR hn_points > 0 OR hn_num_comments > 0)"
             )
         if lexical_query:
             where_clause.append(
@@ -579,34 +691,53 @@ class Database:
                     return None
                 return res[0]
 
-    def update_arxiv_social_metrics(self):
-        q = f"""
-        SELECT at.arxiv_id, {','.join(['SUM(t.' + col + ') AS ' + col for col in SOCIAL_ARXIV_COLUMNS])}
+    def update_arxiv_social_metrics(self, update_twitter=False, update_hnews=False):
+        if not update_twitter and not update_hnews:
+            raise ValueError("Must update either twitter or hacker news metrics.")
+        twitter_q = f"""
+        SELECT at.arxiv_id,
+        {','.join(['SUM(t.' + col + ') AS ' + col for col in TWITTER_SOCIAL_ARXIV_COLUMNS])}
         FROM {Tables.ARXIV_TWEET} at
         INNER JOIN {Tables.TWEET} t 
-        ON at.tweet_id = t.tweet_id 
+        ON at.tweet_id = t.tweet_id
         GROUP BY at.arxiv_id
         """
+        hnews_q = f"""
+        SELECT ah.arxiv_id,
+        {','.join(['SUM(h.' + col + ') AS ' + col for col in HNEWS_SOCIAL_ARXIV_COLUMNS])}
+        FROM {Tables.ARXIV_HNEWS} ah
+        INNER JOIN {Tables.HNEWS} h
+        ON ah.hnews_id = h.hnews_id
+        GROUP BY ah.arxiv_id
+        """
+
+        updates = []
+        if update_twitter:
+            updates.append((twitter_q, "tw", TWITTER_SOCIAL_ARXIV_COLUMNS))
+        if update_hnews:
+            updates.append((hnews_q, "hn", HNEWS_SOCIAL_ARXIV_COLUMNS))
+
         with self._pool_conn() as connection:
             conn = connection.connection
             with conn.cursor() as cur:
-                cur.execute(q)
-                results = cur.fetchall()
+                for query, prefix, cols in updates:
+                    cur.execute(query)
+                    results = cur.fetchall()
 
-                def papers_to_insert():
-                    for res in results:
-                        r = {"arxiv_id": res[0]}
-                        for i, col in enumerate(SOCIAL_ARXIV_COLUMNS):
-                            r[col] = res[i + 1]
-                        yield r
+                    def papers_to_insert():
+                        for res in results:
+                            r = {"arxiv_id": res[0]}
+                            for i, col in enumerate(cols):
+                                r[f"{prefix}_{col}"] = res[i + 1]
+                            yield r
 
-                self._bulk_insert(
-                    Tables.ARXIV,
-                    papers_to_insert(),
-                    cursor=cur,
-                    insert_cols=SOCIAL_ARXIV_COLUMNS,
-                    overwrite=True,
-                )
+                    self._bulk_insert(
+                        Tables.ARXIV,
+                        papers_to_insert(),
+                        cursor=cur,
+                        insert_cols=[f"{prefix}_{c}" for c in cols],
+                        overwrite=True,
+                    )
             conn.commit()
 
     def get_arxiv_tweet_ids(self, arxiv_id):

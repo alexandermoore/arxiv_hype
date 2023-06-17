@@ -451,27 +451,43 @@
 							</div>
 						</div>
 						<div class="grid">
-							<div>
-								<Icon class="social-icon" icon="icon-park-outline:like" />
-								{result['entity']['likes']}
-							</div>
-							<div>
-								<Icon class="social-icon" icon="la:retweet" />
-								{result['entity']['retweets']}
-							</div>
-							<div>
-								<Icon class="social-icon" icon="radix-icons:chat-bubble" />
-								{result['entity']['replies']}
-							</div>
-							<div>
-								<a
-									class="view-tweets-icon"
-									on:keydown={getToggleTweetModalFn(i)}
-									on:click={getToggleTweetModalFn(i)}
-								>
-									<Icon class="social-icon" icon="basil:twitter-outline" />
-								</a>
-							</div>
+							<!-- Twitter social metrics -->
+							{#if result['entity']['likes'] !== null}
+								<div>
+									<Icon class="social-icon" icon="icon-park-outline:like" />
+									{result['entity']['likes']}
+								</div>
+								<div>
+									<Icon class="social-icon" icon="la:retweet" />
+									{result['entity']['retweets']}
+								</div>
+								<div>
+									<Icon class="social-icon" icon="radix-icons:chat-bubble" />
+									{result['entity']['replies']}
+								</div>
+								<div>
+									<a
+										class="view-tweets-icon"
+										on:keydown={getToggleTweetModalFn(i)}
+										on:click={getToggleTweetModalFn(i)}
+									>
+										<Icon class="social-icon" icon="basil:twitter-outline" />
+									</a>
+								</div>
+							{/if}
+							<!-- HackerNews social metrics -->
+							{#if result['entity']['points'] !== null}
+								<div>
+									<Icon class="social-icon" icon="bx:upvote" />
+									{result['entity']['points']}
+								</div>
+							{/if}
+							{#if result['entity']['num_comments'] !== null}
+								<div>
+									<Icon class="social-icon" icon="material-symbols:comment-outline" />
+									{result['entity']['num_comments']}
+								</div>
+							{/if}
 						</div>
 					</article>
 				{/key}

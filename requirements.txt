@@ -10,3 +10,4 @@ psycopg[binary]
 SQLAlchemy
 beautifulsoup4
 python-dotenv
+html2text

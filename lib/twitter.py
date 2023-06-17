@@ -70,9 +70,10 @@ class TwitterAPI:
         results = []
         urls = maybe_get(tweet, ["entities", "urls"], [])
         for url in urls:
-            arxiv_id = arxiv.maybe_arxiv_url_to_id(url.get("expanded_url"))
-            if arxiv_id:
-                results.append(arxiv_id)
+            arxiv_ids = arxiv.maybe_text_to_arxiv_ids(url.get("expanded_url"))
+            if arxiv_ids:
+                # will only find one ID in a single URL
+                results.append(arxiv_ids[0])
         return results if len(results) else None
 
     @staticmethod
