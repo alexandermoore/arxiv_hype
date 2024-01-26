@@ -220,7 +220,7 @@
 		let likes = result['entity']['likes'] || 0;
 		let retweets = result['entity']['retweets'] || 0;
 		let quotes = result['entity']['quotes'] || 0;
-		let impressions = result['entity']['quotes'] || 0;
+		let impressions = result['entity']['impressions'] || 0;
 		let replies = result['entity']['replies'] || 0;
 		return Math.log(1 + likes + retweets * 2 + replies * 5 + quotes * 5 + impressions / 1000.0);
 	}

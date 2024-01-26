@@ -10,7 +10,8 @@ def datetime_to_iso(dt):
 
 
 def iso_to_datetime(iso):
-    return datetime.strptime(iso, ISO_FMT)
+    return datetime.fromisoformat(iso.replace(" ", "T"))
+    # return datetime.strptime(iso, ISO_FMT)
 
 
 def maybe_date_str_to_datetime(date_string):
