@@ -35,6 +35,13 @@ fastapi_app.add_middleware(
 
 db = database.Database()
 
+# Event loop
+try:
+    loop = asyncio.get_running_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 
 class ModelHandler:
     def __init__(self):
@@ -169,8 +176,8 @@ async def search(
     except Exception as ex:
         logging.error(ex)
         raise ex
-        raise HTTPException(status_code=500, detail="Error performing search.")
-    return {"query": query, "top_k": top_k}
+        # raise HTTPException(status_code=500, detail="Error performing search.")
+    # return {"query": query, "top_k": top_k}
 
 
 def _run_pipeline(start_dt=None, embedding_model=None):

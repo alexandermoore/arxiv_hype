@@ -229,7 +229,7 @@ def getEmbeddedTweetHtml(tweet_id):
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             raise err
-    soup = bs4.BeautifulSoup(response.json()["html"])
+    soup = bs4.BeautifulSoup(response.json()["html"], features="lxml")
     for link in soup.find_all("a"):
         link["target"] = "_blank"
     return str(soup)
