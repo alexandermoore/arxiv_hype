@@ -37,18 +37,17 @@ db = database.Database()
 
 # Event loop
 try:
-    loop = asyncio.get_running_loop()
+    EVENT_LOOP = asyncio.get_running_loop()
 except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    EVENT_LOOP = asyncio.new_event_loop()
+    asyncio.set_event_loop(EVENT_LOOP)
 
 
 class ModelHandler:
     def __init__(self):
         self._is_loaded_event = asyncio.Event()
         self._model = None
-        loop = asyncio.get_running_loop()
-        loop.run_in_executor(None, self.load)
+        EVENT_LOOP.run_in_executor(None, self.load)
 
     def load(self):
         model = embedding.SentenceTransformer()
@@ -200,9 +199,9 @@ async def gh_webhook_update_db(request: Request):
     start_dt = datetime.today() - timedelta(days=365)
 
     # Start a separate task for updating event
-    loop = asyncio.get_running_loop()
+    # loop = asyncio.get_running_loop()
     # with concurrent.futures.ProcessPoolExecutor() as pool:
-    loop.run_in_executor(
+    EVENT_LOOP.run_in_executor(
         None, _run_pipeline, start_dt, await model_handler.get_embedding_model()
     )
     # loop = asyncio.get_running_loop()
