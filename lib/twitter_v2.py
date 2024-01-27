@@ -36,9 +36,14 @@ def maybe_get(d, nested_keys, default=None):
 API_SEARCH_ENDPOINT = "https://api.twitter.com/2/tweets/search/recent"
 
 
+"""
+Options for scrapers
+"""
+
+
 class ActorRequest(pydantic.BaseModel):
     actor_id: str
-    params: str
+    params: dict
 
 
 class ApifyActor:
@@ -89,7 +94,7 @@ class FlashActor(ApifyActor):
             tweet_id=tweet["tweet_id"],
             arxiv_ids=arxiv_ids,
             edited_tweet_ids=[],
-            created_at=util.iso_to_datetime(tweet["timestamp"]),
+            created_at=util.multi_formats_to_datetime(tweet["timestamp"]),
             likes=tweet["likes"],
             retweets=tweet["retweets"],
             quotes=tweet["quotes"],
@@ -135,14 +140,14 @@ class TwScraperActor(ApifyActor):
         return [url.get("expanded_url") for url in urls]
 
     def _tweet_to_arxiv_tweet(self, tweet: dict, arxiv_ids: List[str]):
-        tweet_id = tweet["id"]
+        tweet_id = tweet["id_str"]
         edited_ids = []  # [i for i in tweet["edit_history_tweet_ids"] if i != tweet_id]
         arxiv_tweet = ArxivTweet(
             tweet_id=tweet_id,
             arxiv_ids=arxiv_ids,
             edited_tweet_ids=edited_ids,
-            created_at=util.iso_to_datetime(tweet["created_at"]),
-            likes=tweet["like_count"],
+            created_at=util.multi_formats_to_datetime(tweet["created_at"]),
+            likes=tweet["favorite_count"],
             retweets=tweet["retweet_count"],
             quotes=tweet["quote_count"],
             replies=tweet["reply_count"],
@@ -198,29 +203,28 @@ class TwitterAPIV2:
         )
         self.actor = actor
 
-    def search_for_arxiv(self, start_time=None, end_time=None, max_results=10):
-        responses = [
-            self.api_search(
-                query="arxiv.org",
-                start_time=start_time,
-                end_time=end_time,
-                max_results=max_results,
-            )
-        ]
+    def search_for_arxiv(
+        self, start_time=None, end_time=None, max_results=10, num_time_blocks=None
+    ):
+        tweets = self.api_search(
+            query="arxiv.org",
+            start_time=start_time,
+            end_time=end_time,
+            max_results=max_results,
+            num_time_blocks=num_time_blocks,
+        )
 
         arxiv_tweets = []
         seen = set()
-        for response in responses:
-            tweets = response
-            print(f"Processing {len(tweets)} tweets...")
+        print(f"Processing {len(tweets)} tweets...")
 
-            # Get links from direct tweets. Right now we are just ignoring direct tweets
-            # that point to reference tweets since their retweet/metric counts seem off.
-            for tweet in tweets:
-                parsed_tweet = self.actor.maybe_parse_arxiv_tweet(tweet)
-                if parsed_tweet is not None and parsed_tweet.tweet_id not in seen:
-                    arxiv_tweets.append(parsed_tweet)
-                    seen.add(parsed_tweet.tweet_id)
+        # Get links from direct tweets. Right now we are just ignoring direct tweets
+        # that point to reference tweets since their retweet/metric counts seem off.
+        for tweet in tweets:
+            parsed_tweet = self.actor.maybe_parse_arxiv_tweet(tweet)
+            if parsed_tweet is not None and parsed_tweet.tweet_id not in seen:
+                arxiv_tweets.append(parsed_tweet)
+                seen.add(parsed_tweet.tweet_id)
         return arxiv_tweets
 
     def api_search(
@@ -233,49 +237,75 @@ class TwitterAPIV2:
         min_retweets=None,
         start_time=None,
         end_time=None,
-    ):
-        # import json
+        num_time_blocks=None,
+    ) -> List[dict]:
+        import json
 
-        # with open("private/sample_apify_response2.json", "r") as f:
+        # with open("private/sample_apify_response_twscrape.json", "r") as f:
         #     return json.load(f)
+        if num_time_blocks:
+            if not start_time:
+                raise ValueError("Must provide start_time when using num_time_blocks")
+            if end_time is None:
+                end_time = datetime.now()
+            time_intervals = util.create_intervals(
+                0, (end_time - start_time).days, num_blocks=num_time_blocks
+            )
+            time_intervals = [
+                (start_time + timedelta(days=s), start_time + timedelta(days=e))
+                for s, e in time_intervals
+            ]
+        else:
+            time_intervals = (start_time, end_time)
 
         timeout = 60 * 5
-        actor_request = self.actor.create_launch_request(
-            query=query,
-            max_results=max_results,
-            has_engagement=has_engagement,
-            min_likes=min_likes,
-            min_replies=min_replies,
-            min_retweets=min_retweets,
-            start_time=start_time,
-            end_time=end_time,
-        )
-        launch_run_url = f"https://api.apify.com/v2/acts/{actor_request.actor_id}/runs"
-
-        def _dataset_url(run_id):
-            return f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items"
-
-        def _check_run_finished(run_id):
-            url = f"https://api.apify.com/v2/actor-runs/{run_id}"
-            result = self.request_raw(url, params={}, retries=1)
-            return result["data"]["status"] == "SUCCEEDED"
-
-        run_info = self.request_raw(
-            launch_run_url, params=actor_request.params, retries=1, request_type="post"
-        )
-        print("run_info:", run_info)
-        run_id = run_info["data"]["id"]
-
-        stime = time.time()
-        while time.time() - stime <= timeout and not _check_run_finished(run_id):
-            print(
-                f"Waiting for run to complete... ({int(time.time() - stime)}/{timeout}s elapsed)"
+        all_results = []
+        print(time_intervals)
+        for st, et in time_intervals:
+            print(f"Searching time interval {(st, et)}")
+            actor_request = self.actor.create_launch_request(
+                query=query,
+                max_results=max_results,
+                has_engagement=has_engagement,
+                min_likes=min_likes,
+                min_replies=min_replies,
+                min_retweets=min_retweets,
+                start_time=st,
+                end_time=et,
             )
-            time.sleep(10)
-        results = self.request_raw(
-            _dataset_url(run_id), params={"format": "json", "clean": "true"}
-        )
-        return results
+            launch_run_url = (
+                f"https://api.apify.com/v2/acts/{actor_request.actor_id}/runs"
+            )
+
+            def _dataset_url(run_id):
+                return f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items"
+
+            def _check_run_finished(run_id):
+                url = f"https://api.apify.com/v2/actor-runs/{run_id}"
+                result = self.request_raw(url, params={}, retries=1)
+                return result["data"]["status"] == "SUCCEEDED"
+
+            run_info = self.request_raw(
+                launch_run_url,
+                params=actor_request.params,
+                retries=1,
+                request_type="post",
+            )
+            print("run_info:", run_info)
+            run_id = run_info["data"]["id"]
+
+            stime = time.time()
+            while time.time() - stime <= timeout and not _check_run_finished(run_id):
+                print(
+                    f"Waiting for run to complete... ({int(time.time() - stime)}/{timeout}s elapsed)"
+                )
+                time.sleep(10)
+            results = self.request_raw(
+                _dataset_url(run_id), params={"format": "json", "clean": "true"}
+            )
+            print(f"Found {len(results)} tweets in interval.")
+            all_results.append(results)
+        return [result for results in all_results for result in results]
 
     def request_raw(self, url, params, retries=3, request_type="get"):
         """Makes a request to the Twitter API with the appropriate credentials

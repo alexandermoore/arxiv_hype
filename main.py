@@ -14,6 +14,10 @@ import concurrent
 
 # from fastapi.utils import tasks
 
+# To run this in dev:
+# uvicorn main:fastapi_app --reload
+
+
 fastapi_app = FastAPI()
 
 origins = [
@@ -120,6 +124,13 @@ async def get_tweets(arxiv_id: str):
     arxiv_id = arxiv_id[:100]
     tweet_ids = db.get_arxiv_tweet_ids(arxiv_id)
     return {"data": tweet_ids}
+
+
+@fastapi_app.get("/hnews")
+async def get_tweets(arxiv_id: str):
+    arxiv_id = arxiv_id[:100]
+    hnews_ids = db.get_arxiv_hnews_ids(arxiv_id)
+    return {"data": hnews_ids}
 
 
 @fastapi_app.get("/search")

@@ -728,7 +728,10 @@ class Database:
                         for res in results:
                             r = {"arxiv_id": res[0]}
                             for i, col in enumerate(cols):
-                                r[f"{prefix}_{col}"] = res[i + 1]
+                                social_score = (
+                                    res[i + 1] if res[i + 1] is not None else 0
+                                )
+                                r[f"{prefix}_{col}"] = social_score
                             yield r
 
                     self._bulk_insert(
@@ -754,3 +757,18 @@ class Database:
                 for row in cur.fetchall():
                     tweetIds.append(row[0])
         return tweetIds
+
+    def get_arxiv_hnews_ids(self, arxiv_id):
+        q = f"""
+        SELECT hnews_id FROM {Tables.ARXIV_HNEWS}
+        WHERE arxiv_id = %s
+        
+        """
+        hnews_ids = []
+        with self._pool_conn() as connection:
+            conn = connection.connection
+            with conn.cursor() as cur:
+                cur.execute(q, (arxiv_id,))
+                for row in cur.fetchall():
+                    hnews_ids.append(row[0])
+        return hnews_ids

@@ -11,7 +11,7 @@
 
 	let pageInfo = {
 		title: 'ArXiv Hype',
-		description: 'Search a selection of papers that have been mentioned on Twitter.',
+		description: 'Search a selection of papers that have been mentioned on Twitter or HN.',
 		github: 'https://www.github.com/alexanderm/arxiv_hype'
 	};
 
@@ -88,6 +88,33 @@
 	// 	// 	}
 	// 	// );
 	// }
+
+	function getOpenHNewsUrlFn(i) {
+		const fn = async function () {
+			try {
+				let response = await axios.get(apiUrl('hnews'), {
+					params: {
+						arxiv_id: searchResults[i]['entity']['paper']['arxiv_id']
+					}
+				});
+				let hnewsIds = response.data['data'];
+				if (hnewsIds.length > 0) {
+					return 'https://news.ycombinator.com/item?id=' + hnewsIds[0];
+				}
+				return '#';
+			} catch (e) {
+				console.log(e);
+				return '#';
+			}
+		};
+		return () => {
+			fn().then((url) => {
+				if (url) {
+					window.open(url, '_blank')?.focus();
+				}
+			});
+		};
+	}
 
 	async function updateTweetModalFocusTweetsHtml() {
 		let tweetIds = tweetModalTweets.slice(
@@ -486,6 +513,18 @@
 								<div>
 									<Icon class="social-icon" icon="material-symbols:comment-outline" />
 									{result['entity']['num_comments']}
+								</div>
+							{/if}
+							<!-- TODO: Fix this to open the new window properly. -->
+							{#if result['entity']['num_comments'] !== null}
+								<div>
+									<a
+										class="view-tweets-icon"
+										on:keydown={getOpenHNewsUrlFn(i)}
+										on:click={getOpenHNewsUrlFn(i)}
+									>
+										<Icon class="social-icon" icon="la:hacker-news-square" />
+									</a>
 								</div>
 							{/if}
 						</div>

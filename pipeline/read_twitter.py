@@ -1,7 +1,7 @@
 from lib import database, twitter, twitter_v2
 
 
-def run(start_dt=None, max_results=1000):
+def run(start_dt=None, max_results=1000, num_time_blocks=None):
     api = twitter_v2.TwitterAPIV2()
     db = database.Database()
 
@@ -12,7 +12,9 @@ def run(start_dt=None, max_results=1000):
     #     max_results_per_page=max_results_per_page,
     #     max_pages=max_pages,
     # )
-    tweets = api.search_for_arxiv(start_time=start_dt, max_results=max_results)
+    tweets = api.search_for_arxiv(
+        start_time=start_dt, max_results=max_results, num_time_blocks=num_time_blocks
+    )
 
     # Add results to DB
     print(f"Found {len(tweets)} tweets.")
