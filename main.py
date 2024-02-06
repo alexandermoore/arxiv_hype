@@ -10,13 +10,17 @@ import pydantic
 from datetime import datetime, timedelta
 import hashlib
 import hmac
-import concurrent
+import random
+import time
+import os
+import requests
 
 # from fastapi.utils import tasks
 
 # To run this in dev:
 # uvicorn main:fastapi_app --reload
 
+logging.getLogger().setLevel(logging.INFO)
 
 fastapi_app = FastAPI()
 
@@ -52,7 +56,7 @@ class ModelHandler:
     def load(self):
         model = embedding.SentenceTransformer()
         model.embed(["t"])
-        print("Model loading complete.")
+        logging.info("Model loading complete.")
         self._model = model
         self._is_loaded_event.set()
 
@@ -180,21 +184,40 @@ async def search(
 
 
 def _run_pipeline(start_dt=None, embedding_model=None):
-    print(
+    logging.info(
         f"Running pipeline with start_dt={start_dt}, embedding_model={embedding_model}"
     )
     run_pipeline.run(start_dt=start_dt, embedding_model=embedding_model)
 
 
+def _keep_server_alive(duration, base_url):
+    """fly.io shuts down after a period of inactivity.
+    Use this to keep the server on for a duration.
+    """
+    # Super hacky way to tell if it's in prod
+    if "localhost" in base_url:
+        return
+
+    ping_url = os.path.join(os.path.dirname(base_url), "ping")
+
+    stime = time.time()
+    while time.time() - stime < duration:
+        ctime = time.time() - stime
+        logging.info(f"Pinging to keep server alive... ({int(ctime)}/{duration})")
+        _ = requests.get(ping_url)
+        time.sleep(20 + int(random.random() * 10))
+
+
 @fastapi_app.post("/gh_webhook_update_db")
 async def gh_webhook_update_db(request: Request):
-    print("STARTING GH WEBHOOK UPDATE")
+    logging.info("STARTING GH WEBHOOK UPDATE")
     # Verify request
     _verify_github_signature(
         payload_body=await request.body(),
         secret_token=util.get_env_var("GITHUB_WEBHOOK_SECRET", must_exist=True),
         signature_header=request.headers.get("x-hub-signature-256"),
     )
+    logging.info("VERIFIED GH WEBHOOK UPDATE")
 
     start_dt = datetime.today() - timedelta(days=365)
 
@@ -207,12 +230,19 @@ async def gh_webhook_update_db(request: Request):
     # loop = asyncio.get_running_loop()
     # loop.create_task(_run_pipeline(start_dt=start_dt, embedding_model=model))
 
-    print("RETURNING FROM GH WEBHOOK UPDATE")
+    # Keep server alive for 15min
+    EVENT_LOOP.run_in_executor(None, _keep_server_alive, 15 * 60, str(request.url))
+    logging.info("RETURNING FROM GH WEBHOOK UPDATE")
 
 
-@fastapi_app.get("/hello")
-async def hello():
-    return {"hello": "world"}
+# @fastapi_app.get("/hello")
+# async def hello(request: Request):
+#     return {"hello": "world"}
+
+
+@fastapi_app.get("/ping")
+async def ping(request: Request):
+    return {"ping": random.random()}
 
 
 fastapi_app.mount(

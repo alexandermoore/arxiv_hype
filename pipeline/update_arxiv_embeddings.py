@@ -1,4 +1,5 @@
 from lib import database, embedding
+import logging
 
 
 def run(embedding_model=None):
@@ -15,7 +16,7 @@ def run(embedding_model=None):
     db = database.Database()
     papers = db.get_papers(ids_only=False, required_null_fields=["embedding"])
     papers = [r.paper for r in papers]
-    print(f"Found {len(papers)} missing embeddings.")
+    logging.info(f"Found {len(papers)} missing embeddings.")
     batch_size = 8
     upload_every = batch_size * 10
 
@@ -31,9 +32,9 @@ def run(embedding_model=None):
         if len(embedded_papers) >= upload_every:
             db.insert_papers(embedded_papers, insert_type="embeddings")
             embedded_papers = []
-        print(f"Processed {num_processed}/{total}")
+        logging.info(f"Processed {num_processed}/{total}")
     db.insert_papers(embedded_papers, insert_type="embeddings")
-    print("Done updating embeddings.")
+    logging.info("Done updating embeddings.")
 
 
 if __name__ == "__main__":

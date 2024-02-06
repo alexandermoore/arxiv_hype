@@ -1,4 +1,5 @@
 from lib import database, twitter, twitter_v2
+import logging
 
 
 def run(start_dt=None, max_results=1000, num_time_blocks=None):
@@ -17,7 +18,7 @@ def run(start_dt=None, max_results=1000, num_time_blocks=None):
     )
 
     # Add results to DB
-    print(f"Found {len(tweets)} tweets.")
+    logging.info(f"Found {len(tweets)} tweets.")
     db.insert_tweets(tweets)
     db.update_arxiv_social_metrics(update_twitter=True)
 

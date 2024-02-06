@@ -34,3 +34,5 @@ The user should be able to do the following:
 * Modularize frontend
 * Fix database connection issues [fixed]
 * Fix model caching [workaround-- include model in image for now]
+* Grey out search button when no text
+* Maybe HNews button can show a list of posts to view. Maybe can have button to search for arxiv paper on twitter or hacker news in new window. A search button that toggles a popup. Can get rid of hacker news button then maybe.

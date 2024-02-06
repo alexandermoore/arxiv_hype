@@ -4,11 +4,13 @@ import torch.nn.functional as F
 import os
 from lib import util
 
+import logging
+
 
 class SentenceTransformer:
     def __init__(self, model="sentence-transformers/all-MiniLM-L6-v2"):
         cache_dir = util.get_env_var("TORCH_HOME", must_exist=True)
-        print(f"Using pytorch cache directory: {cache_dir}")
+        logging.info(f"Using pytorch cache directory: {cache_dir}")
         self._tokenizer = AutoTokenizer.from_pretrained(model, cache_dir=cache_dir)
         self._model = AutoModel.from_pretrained(model, cache_dir=cache_dir)
 

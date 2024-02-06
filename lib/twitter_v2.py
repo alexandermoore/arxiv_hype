@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 import bs4
 import time
+import logging
 
 from lib import arxiv
 from lib import util
@@ -216,7 +217,7 @@ class TwitterAPIV2:
 
         arxiv_tweets = []
         seen = set()
-        print(f"Processing {len(tweets)} tweets...")
+        logging.info(f"Processing {len(tweets)} tweets...")
 
         # Get links from direct tweets. Right now we are just ignoring direct tweets
         # that point to reference tweets since their retweet/metric counts seem off.
@@ -260,9 +261,9 @@ class TwitterAPIV2:
 
         timeout = 60 * 5
         all_results = []
-        print(time_intervals)
+        logging.info(time_intervals)
         for st, et in time_intervals:
-            print(f"Searching time interval {(st, et)}")
+            logging.info(f"Searching time interval {(st, et)}")
             actor_request = self.actor.create_launch_request(
                 query=query,
                 max_results=max_results,
@@ -291,19 +292,19 @@ class TwitterAPIV2:
                 retries=1,
                 request_type="post",
             )
-            print("run_info:", run_info)
+            logging.info(f"run_info: {run_info}")
             run_id = run_info["data"]["id"]
 
             stime = time.time()
             while time.time() - stime <= timeout and not _check_run_finished(run_id):
-                print(
+                logging.info(
                     f"Waiting for run to complete... ({int(time.time() - stime)}/{timeout}s elapsed)"
                 )
                 time.sleep(10)
             results = self.request_raw(
                 _dataset_url(run_id), params={"format": "json", "clean": "true"}
             )
-            print(f"Found {len(results)} tweets in interval.")
+            logging.info(f"Found {len(results)} tweets in interval.")
             all_results.append(results)
         return [result for results in all_results for result in results]
 

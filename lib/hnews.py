@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import pydantic
 from html2text import html2text
 import time
+import logging
 
 DATE_SEARCH_URL = "http://hn.algolia.com/api/v1/search_by_date"
 POP_SEARCH_URL = "http://hn.algolia.com/api/v1/search"
@@ -90,7 +91,7 @@ def search_for_arxiv(start_time=None, end_time=None, num_results=10, order_by="d
         if not len(new_results):
             break
         results.extend(new_results)
-        print(f"Found {len(results)} HN results so far...")
+        logging.info(f"Found {len(results)} HN results so far...")
     # deduplicate (shouldn't happen but never know)
     final_results = []
     seen = set()

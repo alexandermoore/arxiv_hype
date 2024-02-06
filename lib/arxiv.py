@@ -6,6 +6,7 @@ from datetime import datetime
 from concurrent import futures
 import time
 import random
+import logging
 
 _ARXIV_ID_PATTERN = "[0-9]+\.[0-9]+"
 
@@ -67,9 +68,9 @@ def get_paper_info_parallel(arxiv_ids, max_per_request=50, max_workers=3, sleep=
                 results.extend(future.result())
             except Exception as exc:
                 failed_ids.extend(arxiv_ids[s:e])
-                print(exc)
+                logging.error(exc)
     if failed_ids:
-        print("Failed IDs", failed_ids)
+        logging.warn(f"Failed IDs: {failed_ids}")
     return results
 
 
