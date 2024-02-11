@@ -4,9 +4,9 @@ from lib import database, embedding, util, twitter
 from pipeline import run_pipeline
 import logging
 import asyncio
+import threading
 from typing import List, Annotated
 from fastapi.middleware.cors import CORSMiddleware
-import pydantic
 from datetime import datetime, timedelta
 import hashlib
 import hmac
@@ -40,40 +40,73 @@ fastapi_app.add_middleware(
 db = database.Database()
 
 # Event loop
-try:
-    EVENT_LOOP = asyncio.get_running_loop()
-except RuntimeError:
-    EVENT_LOOP = asyncio.new_event_loop()
-    asyncio.set_event_loop(EVENT_LOOP)
+# try:
+#     EVENT_LOOP = asyncio.get_running_loop()
+# except RuntimeError:
+#     EVENT_LOOP = asyncio.new_event_loop()
+#     asyncio.set_event_loop(EVENT_LOOP)
+
+_MODEL = None
 
 
-class ModelHandler:
+# class ModelHandler:
+#     def __init__(self):
+#         # OLD WAY
+#         # self._is_loaded_event = asyncio.Event()
+#         # self._model = None
+#         # EVENT_LOOP.run_in_executor(None, self.load)
+#         self._is_loaded_event = asyncio.Event()
+#         self._model = None
+#         self.load()
+
+#     async def load(self):
+#         model = embedding.SentenceTransformer()
+#         model.embed(["t"])
+#         logging.info("Model loading complete.")
+#         self._model = model
+#         self._is_loaded_event.set()
+
+#     async def get_embedding_model(self):
+#         await self._is_loaded_event.wait()
+#         return self._model
+
+
+class ModelHandlerV2:
     def __init__(self):
-        self._is_loaded_event = asyncio.Event()
-        self._model = None
-        EVENT_LOOP.run_in_executor(None, self.load)
-
-    def load(self):
+        logging.info("Starting model loading")
         model = embedding.SentenceTransformer()
         model.embed(["t"])
         logging.info("Model loading complete.")
         self._model = model
-        self._is_loaded_event.set()
 
-    async def get_embedding_model(self):
-        await self._is_loaded_event.wait()
+    def get_embedding_model(self):
         return self._model
 
 
-model_handler = ModelHandler()
+_model_handler = None
 
 
-async def get_embedding_model():
-    global _MODEL
-    if _MODEL is None:
-        _MODEL = embedding.SentenceTransformer()
-        _MODEL.embed(["t"])
-    return _MODEL
+def load_model_handler():
+    global _model_handler
+    _model_handler = ModelHandlerV2()
+
+
+load_thread = threading.Thread(target=load_model_handler)
+load_thread.start()
+
+
+def model_handler() -> ModelHandlerV2:
+    while _model_handler is None:
+        continue
+    return _model_handler
+
+
+# async def get_embedding_model():
+#     global _MODEL
+#     if _MODEL is None:
+#         _MODEL = embedding.SentenceTransformer()
+#         _MODEL.embed(["t"])
+#     return _MODEL
 
 
 # model = embedding.SentenceTransformer()
@@ -165,7 +198,7 @@ async def search(
         start_date = util.maybe_date_str_to_datetime(start_date)
         end_date = util.maybe_date_str_to_datetime(end_date)
         top_k = min(max(1, top_k), 500)
-        model = await model_handler.get_embedding_model()
+        model = model_handler().get_embedding_model()
         embedding = model.embed([query])[0]
         results = db.get_similar_papers(
             embedding,
@@ -224,14 +257,27 @@ async def gh_webhook_update_db(request: Request):
     # Start a separate task for updating event
     # loop = asyncio.get_running_loop()
     # with concurrent.futures.ProcessPoolExecutor() as pool:
-    EVENT_LOOP.run_in_executor(
-        None, _run_pipeline, start_dt, await model_handler.get_embedding_model()
-    )
+    # EVENT_LOOP.run_in_executor(
+    #     None, _run_pipeline, start_dt, await model_handler.get_embedding_model()
+    # )
+
     # loop = asyncio.get_running_loop()
     # loop.create_task(_run_pipeline(start_dt=start_dt, embedding_model=model))
 
     # Keep server alive for 15min
-    EVENT_LOOP.run_in_executor(None, _keep_server_alive, 15 * 60, str(request.url))
+    # EVENT_LOOP.run_in_executor(None, _keep_server_alive, 15 * 60, str(request.url))
+
+    threading.Thread(
+        target=_run_pipeline,
+        kwargs={
+            "start_dt": start_dt,
+            "embedding_model": model_handler().get_embedding_model(),
+        },
+    ).start()
+    threading.Thread(
+        target=_keep_server_alive,
+        kwargs={"duration": 15 * 60, "base_url": str(request.url)},
+    ).start()
     logging.info("RETURNING FROM GH WEBHOOK UPDATE")
 
 

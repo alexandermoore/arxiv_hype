@@ -167,6 +167,33 @@ class TwScraperActor(ApifyActor):
         start_time=None,
         end_time=None,
     ):
+        params = {
+            "searchTerms": [query],
+            "searchMode": "top",
+            "maxTweets": max_results,
+            "addUserInfo": True,
+            "scrapeTweetReplies": True,
+        }
+        if start_time:
+            params["sinceDate"] = util.datetime_to_date_str(start_time)
+        if end_time:
+            params["untilDate"] = util.datetime_to_date_str(
+                end_time + timedelta(days=1)
+            )
+        params = {k: v for k, v in params.items() if v is not None}
+        return ActorRequest(actor_id="microworlds~twitter-scraper", params=params)
+
+    def create_launch_request_old(
+        self,
+        query,
+        max_results=5,
+        has_engagement=None,
+        min_likes=None,
+        min_replies=None,
+        min_retweets=None,
+        start_time=None,
+        end_time=None,
+    ):
         query = [query]
         if start_time:
             query.append(f"since:{util.datetime_to_date_str(start_time)}")
@@ -207,13 +234,19 @@ class TwitterAPIV2:
     def search_for_arxiv(
         self, start_time=None, end_time=None, max_results=10, num_time_blocks=None
     ):
-        tweets = self.api_search(
-            query="arxiv.org",
-            start_time=start_time,
-            end_time=end_time,
-            max_results=max_results,
-            num_time_blocks=num_time_blocks,
-        )
+        # Attempt to pull tweets 3 times
+        tweets = []
+        tries_remaining = 3
+        while len(tweets) <= 1 and tries_remaining > 0:
+            logging.info(f"Attempting to pull tweets")
+            tweets = self.api_search(
+                query="arxiv.org",
+                start_time=start_time,
+                end_time=end_time,
+                max_results=max_results,
+                num_time_blocks=num_time_blocks,
+            )
+            tries_remaining -= 1
 
         arxiv_tweets = []
         seen = set()
@@ -257,7 +290,7 @@ class TwitterAPIV2:
                 for s, e in time_intervals
             ]
         else:
-            time_intervals = (start_time, end_time)
+            time_intervals = [(start_time, end_time)]
 
         timeout = 60 * 5
         all_results = []
