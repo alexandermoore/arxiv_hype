@@ -267,13 +267,19 @@ async def gh_webhook_update_db(request: Request):
     # Keep server alive for 15min
     # EVENT_LOOP.run_in_executor(None, _keep_server_alive, 15 * 60, str(request.url))
 
-    threading.Thread(
-        target=_run_pipeline,
-        kwargs={
-            "start_dt": start_dt,
-            "embedding_model": model_handler().get_embedding_model(),
-        },
-    ).start()
+    def _run_pipeline_wrapper_fn():
+        _run_pipeline(
+            start_dt=start_dt, embedding_model=model_handler().get_embedding_model()
+        )
+
+    threading.Thread(target=_run_pipeline_wrapper_fn).start()
+    # threading.Thread(
+    #     target=_run_pipeline,
+    #     kwargs={
+    #         "start_dt": start_dt,
+    #         "embedding_model": model_handler().get_embedding_model(),
+    #     },
+    # ).start()
     threading.Thread(
         target=_keep_server_alive,
         kwargs={"duration": 15 * 60, "base_url": str(request.url)},

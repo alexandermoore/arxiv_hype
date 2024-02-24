@@ -221,7 +221,58 @@ class TwScraperActor(ApifyActor):
         return ActorRequest(actor_id="microworlds~twitter-scraper", params=params)
 
 
+class TweetScraperAPIDojoActor(ApifyActor):
+    # https://twitter.com/search?f=top&q=wikipedia%20until%3A2022-09-14%20since%3A2019-11-16&src=typed_query
+    def _extract_urls_from_tweet(self, tweet: dict):
+        urls = maybe_get(tweet, ["entities", "urls"], [])
+        return [url.get("expanded_url") for url in urls]
+
+    def _tweet_to_arxiv_tweet(self, tweet: dict, arxiv_ids: List[str]):
+        tweet_id = tweet["id_str"]
+        edited_ids = []  # [i for i in tweet["edit_history_tweet_ids"] if i != tweet_id]
+        arxiv_tweet = ArxivTweet(
+            tweet_id=tweet_id,
+            arxiv_ids=arxiv_ids,
+            edited_tweet_ids=edited_ids,
+            created_at=util.multi_formats_to_datetime(tweet["created_at"]),
+            likes=tweet["favorite_count"],
+            retweets=tweet["retweet_count"],
+            quotes=tweet["quote_count"],
+            replies=tweet["reply_count"],
+            impressions=tweet["views_count"],
+        )
+        return arxiv_tweet
+
+    def create_launch_request(
+        self,
+        query,
+        max_results=5,
+        has_engagement=None,
+        min_likes=None,
+        min_replies=None,
+        min_retweets=None,
+        start_time=None,
+        end_time=None,
+    ):
+        params = {
+            "searchTerms": [query],
+            "searchMode": "top",
+            "maxTweets": max_results,
+            "addUserInfo": True,
+            "scrapeTweetReplies": True,
+        }
+        if start_time:
+            params["sinceDate"] = util.datetime_to_date_str(start_time)
+        if end_time:
+            params["untilDate"] = util.datetime_to_date_str(
+                end_time + timedelta(days=1)
+            )
+        params = {k: v for k, v in params.items() if v is not None}
+        return ActorRequest(actor_id="microworlds~twitter-scraper", params=params)
+
+
 # TODO: Move functionality to ApifyActor so we can easily pick one to use at any given time.
+# TODO: Check out https://console.apify.com/actors/61RPP7dywgiy0JPD0/information/latest/readme
 
 
 class TwitterAPIV2:
@@ -356,6 +407,7 @@ class TwitterAPIV2:
             retries = Retry(
                 total=retries, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504]
             )
+            print("=================REQUESTING======================")
             s.mount("https://", HTTPAdapter(max_retries=retries))
             if request_type == "post":
                 response = s.post(

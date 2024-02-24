@@ -486,9 +486,11 @@ class Database:
                     "abstract": p.abstract,
                     "title": p.title,
                     "published_ts": p.published,  # util.datetime_to_iso(p.published),
-                    "embedding": json.dumps(p.embedding, separators=(",", ":"))
-                    if p.embedding
-                    else None,
+                    "embedding": (
+                        json.dumps(p.embedding, separators=(",", ":"))
+                        if p.embedding
+                        else None
+                    ),
                 }
 
         def categories_to_insert():
@@ -618,7 +620,7 @@ class Database:
 
     def get_similar_papers(
         self,
-        embedding,
+        embedding=None,
         lexical_query=None,
         top_k=10,
         start_date=None,
@@ -638,7 +640,6 @@ class Database:
         cols = self.get_table_columns(Tables.ARXIV)
         cols.remove("embedding")
         col_idx = self._list_index_map(cols)
-        embedding = json.dumps(embedding, separators=(",", ":"))
 
         where_clause = ["embedding IS NOT NULL"]
         sql_args = []
@@ -660,8 +661,13 @@ class Database:
 
         where_clause_str = "WHERE " + " AND ".join(where_clause)
 
+        if embedding is not None:
+            embedding = json.dumps(embedding, separators=(",", ":"))
+            similarity_clause = f"1 - (embedding <=> '{embedding}')"
+        else:
+            similarity_clause = "0"
         q = f"""
-        SELECT {','.join([c for c in cols])}, 1 - (embedding <=> '{embedding}') AS similarity
+        SELECT {','.join([c for c in cols])}, {similarity_clause} AS similarity
         FROM {Tables.ARXIV}
         {where_clause_str}
         ORDER BY similarity DESC LIMIT {top_k}

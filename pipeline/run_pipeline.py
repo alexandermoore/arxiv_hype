@@ -16,7 +16,7 @@ def run(embedding_model=None, start_dt=None):
     # API max is 1000 results
     # Fetch most recent
     read_hnews.run(num_results=1100, order_by="date", start_dt=start_dt)
-    # Fetch most popular (could overlap recent heavily)
+    # # Fetch most popular (could overlap recent heavily)
     read_hnews.run(num_results=1100, order_by="popularity", start_dt=start_dt)
     logging.info("Handling arxiv data")
     update_arxiv_data.run()
