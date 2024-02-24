@@ -765,10 +765,15 @@ class Database:
         return tweetIds
 
     def get_arxiv_hnews_ids(self, arxiv_id):
+        # TODO: Make this function also get the points and comment counts.
+        # q = f"""
+        # SELECT ah.hnews_id FROM {Tables.ARXIV_HNEWS} ah
+        # INNER JOIN {Tables.HNEWS} hn ON ah.hnews_id = hn.hnews_id
+        # WHERE arxiv_id = %s
+        # """
         q = f"""
         SELECT hnews_id FROM {Tables.ARXIV_HNEWS}
         WHERE arxiv_id = %s
-        
         """
         hnews_ids = []
         with self._pool_conn() as connection:
