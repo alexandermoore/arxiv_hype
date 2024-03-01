@@ -118,6 +118,7 @@ class Database:
             tw_impressions BIGINT,
             hn_points INTEGER,
             hn_num_comments INTEGER,
+            summary TEXT,
 
             PRIMARY KEY (arxiv_id)
         );

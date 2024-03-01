@@ -2,29 +2,43 @@
 	import axios from 'axios';
 	import { apiUrl } from '$lib/Utils.svelte';
 
-	export let searchResults = [];
+	let _searchResults = [];
 	export let onSearchCallback = function () {};
+
+	// Readonly hack https://github.com/sveltejs/svelte/issues/7712#issuecomment-1642470141
+	export let searchResults = [];
+	$: searchResults = _searchResults;
 
 	let searchIsLoading = false;
 
+	// refactor to dict
 	let searchQuery: string = '';
 	let lexicalSearchQuery: string = '';
 
-	let rankingSemantic = 100;
-	let rankingLexical = 0;
-	let rankingPopularity = 25;
-	let rankingRecency = 0;
+	let settings = {
+		rankingSemantic: 100,
+		rankingLexical: 0,
+		rankingPopularity: 25,
+		rankingRecency: 0,
 
-	let retrievalKeywordsMustAppear = false;
-	let retrievalMustSocial = false;
-	let retrievalStartDate = undefined;
-	let retrievalEndDate = undefined;
-	let retrievalTopK = 50;
+		retrievalKeywordsMustAppear: false,
+		retrievalMustSocial: false,
+		retrievalStartDate: undefined,
+		retrievalEndDate: undefined,
+		retrievalTopK: 50,
+		lexicalSearchQuery: ''
+	};
 
-	let maxSemanticScore = 0;
-	let maxPopularityScore = 0;
-	let maxDate: number = 0;
-	let minDate: number = Infinity;
+	// let rankingSemantic = 100;
+	// let rankingLexical = 0;
+	// let rankingPopularity = 25;
+	// let rankingRecency = 0;
+
+	// let retrievalKeywordsMustAppear = false;
+	// let retrievalMustSocial = false;
+	// let retrievalStartDate = undefined;
+	// let retrievalEndDate = undefined;
+	// let retrievalTopK = 50;
 
 	function getSearchResultScore(result, maxSemanticScore, maxPopularityScore, maxDate) {
 		let popularityScore = rawPopularityScore(result);
@@ -32,19 +46,19 @@
 		//console.log({ semanticSimilarity, maxSemanticScore, popularityScore, maxPopularityScore });
 		let published = new Date(result['entity']['paper']['published']).getTime();
 
-		const wSemanticScore = (rankingSemantic * semanticSimilarity) / maxSemanticScore;
-		const wPopularityScore = (rankingPopularity * popularityScore) / maxPopularityScore;
-		const wRecencyScore = rankingRecency * decayedRecencyScore(published, maxDate);
+		const wSemanticScore = (settings.rankingSemantic * semanticSimilarity) / maxSemanticScore;
+		const wPopularityScore = (settings.rankingPopularity * popularityScore) / maxPopularityScore;
+		const wRecencyScore = settings.rankingRecency * decayedRecencyScore(published, maxDate);
 
 		//console.log({ wSemanticScore, wPopularityScore, wRecencyScore });
 		return wSemanticScore + wPopularityScore + wRecencyScore;
 	}
 
 	function computeMaxScores() {
-		maxSemanticScore = 0;
-		maxPopularityScore = 0;
-		maxDate = 0;
-		searchResults.forEach((result) => {
+		let maxSemanticScore = 0;
+		let maxPopularityScore = 0;
+		let maxDate = 0;
+		_searchResults.forEach((result) => {
 			if (result['similarity'] > maxSemanticScore) {
 				maxSemanticScore = result['similarity'];
 			}
@@ -57,6 +71,11 @@
 				maxDate = published;
 			}
 		});
+		return {
+			semantic: maxSemanticScore,
+			popularity: maxPopularityScore,
+			date: maxDate
+		};
 	}
 
 	function rawPopularityScore(result) {
@@ -76,16 +95,22 @@
 
 	function rankSearchResults() {
 		//lastSearchResult = 10;
-		let resultScores = searchResults.map((result) => {
+		let maxScores = computeMaxScores();
+		let resultScores = _searchResults.map((result) => {
 			return {
 				r: result,
-				score: -getSearchResultScore(result, maxSemanticScore, maxPopularityScore, maxDate)
+				score: -getSearchResultScore(
+					result,
+					maxScores.semantic,
+					maxScores.popularity,
+					maxScores.date
+				)
 			};
 		});
 		resultScores.sort(function (a, b) {
 			return a.score - b.score;
 		});
-		searchResults = resultScores.map((resultScore) => resultScore['r']);
+		_searchResults = resultScores.map((resultScore) => resultScore['r']);
 	}
 
 	async function search(query: string) {
@@ -93,25 +118,25 @@
 			return;
 		}
 		let lexicalSearchQueryFinal;
-		if (retrievalKeywordsMustAppear) {
+		if (settings.retrievalKeywordsMustAppear) {
 			lexicalSearchQueryFinal = lexicalSearchQuery || query;
 		} else {
 			lexicalSearchQueryFinal = undefined;
 		}
 		searchIsLoading = true;
+
 		try {
 			let response = await axios.get(apiUrl('search'), {
 				params: {
 					query: query,
-					start_date: retrievalStartDate,
-					end_date: retrievalEndDate,
-					top_k: retrievalTopK,
-					require_social: retrievalMustSocial,
+					start_date: settings.retrievalStartDate,
+					end_date: settings.retrievalEndDate,
+					top_k: settings.retrievalTopK,
+					require_social: settings.retrievalMustSocial,
 					lexical_query: lexicalSearchQueryFinal
 				}
 			});
-			searchResults = response.data['data'];
-			computeMaxScores();
+			_searchResults = response.data['data'];
 			rankSearchResults();
 			onSearchCallback();
 		} catch (e) {
@@ -157,10 +182,14 @@
 		<!-- Checkboxes -->
 		<fieldset>
 			<label for="retrieval_kw">
-				<input id="retrieval_kw" type="checkbox" bind:checked={retrievalKeywordsMustAppear} />
+				<input
+					id="retrieval_kw"
+					type="checkbox"
+					bind:checked={settings.retrievalKeywordsMustAppear}
+				/>
 				Query keywords must appear in paper title or abstract.
 			</label>
-			<div hidden={!retrievalKeywordsMustAppear}>
+			<div hidden={!settings.retrievalKeywordsMustAppear}>
 				<label for="retrieval_kw_query">
 					Query to use for keyword <span
 						data-tooltip="Supports the use of quotes to create phrases, and 'OR' to match any of multiple words."
@@ -175,7 +204,7 @@
 				</label>
 			</div>
 			<label for="retrieval_social">
-				<input id="retrieval_social" type="checkbox" bind:checked={retrievalMustSocial} />
+				<input id="retrieval_social" type="checkbox" bind:checked={settings.retrievalMustSocial} />
 				Papers must have at least one like, retweet or quote.
 			</label>
 			<label for="sdate"
@@ -185,7 +214,7 @@
 					type="date"
 					id="sdate"
 					name="sdate"
-					bind:value={retrievalStartDate}
+					bind:value={settings.retrievalStartDate}
 				/>
 				<span>to</span>
 				<input
@@ -193,7 +222,7 @@
 					type="date"
 					id="edate"
 					name="edate"
-					bind:value={retrievalEndDate}
+					bind:value={settings.retrievalEndDate}
 				/>
 			</label>
 			<label for="retrieval_topk"
@@ -201,12 +230,12 @@
 					data-tooltip="Retrieving more papers allows for more ranking flexibility, but the page may run more slowly."
 					>retrieve</span
 				>
-				[<b>{retrievalTopK}</b>]
+				[<b>{settings.retrievalTopK}</b>]
 				<input
 					type="range"
 					min="10"
 					max="500"
-					bind:value={retrievalTopK}
+					bind:value={settings.retrievalTopK}
 					id="retrieval_topk"
 					name="retrieval_topk"
 				/>
@@ -224,7 +253,7 @@
 				type="range"
 				min="0"
 				max="100"
-				bind:value={rankingSemantic}
+				bind:value={settings.rankingSemantic}
 				on:change={rankSearchResults}
 				id="ranking_semantic"
 				name="ranking_semantic"
@@ -249,7 +278,7 @@
 				type="range"
 				min="0"
 				max="100"
-				bind:value={rankingPopularity}
+				bind:value={settings.rankingPopularity}
 				on:change={rankSearchResults}
 				id="ranking_popularity"
 				name="ranking_popularity"
@@ -261,7 +290,7 @@
 				type="range"
 				min="0"
 				max="100"
-				bind:value={rankingRecency}
+				bind:value={settings.rankingRecency}
 				on:change={rankSearchResults}
 				id="ranking_recency"
 				name="ranking_recency"
