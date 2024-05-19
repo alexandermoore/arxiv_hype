@@ -16,8 +16,10 @@
 	// for TweetModal
 	let tweetModalInstance;
 	let hnewsModalInstance;
+	let searchBoxInstance;
 	let searchResults = [];
 	let lastSearchResult = Infinity;
+	let showSummaries = false;
 
 	// const debounce = (fn: Function, ms = 300) => {
 	// 	console.log('Entering');
@@ -87,12 +89,19 @@
 			onSearchCallback={function () {
 				lastSearchResult = 10;
 			}}
+			bind:showSummaries
 		/>
 		<!-- Search results display -->
 		<div class="search-result-container">
 			{#each searchResults.slice(0, lastSearchResult) as result, i}
 				{#key result}
-					<SearchResult {result} idx={i} {tweetModalInstance} {hnewsModalInstance} />{/key}
+					<SearchResult
+						{result}
+						idx={i}
+						{tweetModalInstance}
+						{hnewsModalInstance}
+						showSummary={showSummaries}
+					/>{/key}
 			{/each}
 		</div>
 		<button on:click={showMoreSearchResults} hidden={lastSearchResult >= searchResults.length}
@@ -113,11 +122,6 @@
 	}
 	.centered {
 		text-align: center;
-	}
-	:global(.fade-text) {
-		-webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 99%);
-		mask-image: linear-gradient(to bottom, black 80%, transparent 99%);
-		max-height: 100%;
 	}
 
 	/* summary::before {

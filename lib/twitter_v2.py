@@ -228,18 +228,19 @@ class TweetScraperAPIDojoActor(ApifyActor):
         return [url.get("expanded_url") for url in urls]
 
     def _tweet_to_arxiv_tweet(self, tweet: dict, arxiv_ids: List[str]):
-        tweet_id = tweet["id_str"]
+        tweet_id = tweet["id"]
         edited_ids = []  # [i for i in tweet["edit_history_tweet_ids"] if i != tweet_id]
         arxiv_tweet = ArxivTweet(
             tweet_id=tweet_id,
             arxiv_ids=arxiv_ids,
             edited_tweet_ids=edited_ids,
-            created_at=util.multi_formats_to_datetime(tweet["created_at"]),
-            likes=tweet["favorite_count"],
-            retweets=tweet["retweet_count"],
-            quotes=tweet["quote_count"],
-            replies=tweet["reply_count"],
-            impressions=tweet["views_count"],
+            created_at=util.multi_formats_to_datetime(tweet["createdAt"]),
+            likes=tweet["likeCount"],
+            retweets=tweet["retweetCount"],
+            quotes=tweet["quoteCount"],
+            replies=tweet["replyCount"],
+            # Sometimes missing
+            impressions=tweet.get("viewCount", 0),
         )
         return arxiv_tweet
 
@@ -256,19 +257,20 @@ class TweetScraperAPIDojoActor(ApifyActor):
     ):
         params = {
             "searchTerms": [query],
-            "searchMode": "top",
-            "maxTweets": max_results,
+            "sort": "Top",
+            "maxTweetsPerQuery": max_results,
             "addUserInfo": True,
             "scrapeTweetReplies": True,
+            "minimumFavorites": min_likes,
+            "minimumRetweets": min_retweets,
+            "minimumReplies": min_replies,
         }
         if start_time:
-            params["sinceDate"] = util.datetime_to_date_str(start_time)
+            params["start"] = util.datetime_to_date_str(start_time)
         if end_time:
-            params["untilDate"] = util.datetime_to_date_str(
-                end_time + timedelta(days=1)
-            )
+            params["end"] = util.datetime_to_date_str(end_time + timedelta(days=1))
         params = {k: v for k, v in params.items() if v is not None}
-        return ActorRequest(actor_id="microworlds~twitter-scraper", params=params)
+        return ActorRequest(actor_id="apidojo~tweet-scraper", params=params)
 
 
 # TODO: Move functionality to ApifyActor so we can easily pick one to use at any given time.
@@ -276,7 +278,7 @@ class TweetScraperAPIDojoActor(ApifyActor):
 
 
 class TwitterAPIV2:
-    def __init__(self, actor: ApifyActor = TwScraperActor()):
+    def __init__(self, actor: ApifyActor = TweetScraperAPIDojoActor()):
         self.credentials = TweetCredentials(
             api_token=util.get_env_var("APIFY_API_TOKEN")
         )
@@ -346,38 +348,46 @@ class TwitterAPIV2:
         timeout = 60 * 5
         all_results = []
         logging.info(time_intervals)
+
+        # For when a run fails to parse and we want to get its results again without re-requesting
+        debug_run_id = None  # "aNQDAPcYM3p6eU39S"
+
+        def _dataset_url(run_id):
+            return f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items"
+
+        def _check_run_finished(run_id):
+            url = f"https://api.apify.com/v2/actor-runs/{run_id}"
+            result = self.request_raw(url, params={}, retries=1)
+            return result["data"]["status"] == "SUCCEEDED"
+
         for st, et in time_intervals:
             logging.info(f"Searching time interval {(st, et)}")
-            actor_request = self.actor.create_launch_request(
-                query=query,
-                max_results=max_results,
-                has_engagement=has_engagement,
-                min_likes=min_likes,
-                min_replies=min_replies,
-                min_retweets=min_retweets,
-                start_time=st,
-                end_time=et,
-            )
-            launch_run_url = (
-                f"https://api.apify.com/v2/acts/{actor_request.actor_id}/runs"
-            )
 
-            def _dataset_url(run_id):
-                return f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items"
+            if debug_run_id is None:
+                actor_request = self.actor.create_launch_request(
+                    query=query,
+                    max_results=max_results,
+                    has_engagement=has_engagement,
+                    min_likes=min_likes,
+                    min_replies=min_replies,
+                    min_retweets=min_retweets,
+                    start_time=st,
+                    end_time=et,
+                )
+                launch_run_url = (
+                    f"https://api.apify.com/v2/acts/{actor_request.actor_id}/runs"
+                )
 
-            def _check_run_finished(run_id):
-                url = f"https://api.apify.com/v2/actor-runs/{run_id}"
-                result = self.request_raw(url, params={}, retries=1)
-                return result["data"]["status"] == "SUCCEEDED"
-
-            run_info = self.request_raw(
-                launch_run_url,
-                params=actor_request.params,
-                retries=1,
-                request_type="post",
-            )
-            logging.info(f"run_info: {run_info}")
-            run_id = run_info["data"]["id"]
+                run_info = self.request_raw(
+                    launch_run_url,
+                    params=actor_request.params,
+                    retries=1,
+                    request_type="post",
+                )
+                logging.info(f"run_info: {run_info}")
+                run_id = run_info["data"]["id"]
+            else:
+                run_id = debug_run_id
 
             stime = time.time()
             while time.time() - stime <= timeout and not _check_run_finished(run_id):

@@ -22,6 +22,7 @@ class ArxivPaper(pydantic.BaseModel):
     published: Optional[datetime] = None
     updated: Optional[datetime] = None
     embedding: Optional[List] = None
+    summary: Optional[str] = None
 
     @property
     def published_ts(self):

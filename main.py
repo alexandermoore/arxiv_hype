@@ -178,18 +178,20 @@ async def get_tweets(arxiv_id: str):
 
 @fastapi_app.get("/search")
 async def search(
-    query: str,
+    query: str = "",
     top_k: int = 10,
     start_date: str = None,
     end_date: str = None,
     require_social: bool = False,
     lexical_query: str = None,
+    exclude_query: str = None,
 ):
     try:
-        if query.strip() == "":
-            return {"data": []}
+        query = query.strip()
         if lexical_query is not None and lexical_query.strip() == "":
             lexical_query = None
+        if exclude_query is not None and exclude_query.strip() == "":
+            exclude_query = None
 
         # Limit query length just in case
         query = query[:200]
@@ -199,10 +201,11 @@ async def search(
         end_date = util.maybe_date_str_to_datetime(end_date)
         top_k = min(max(1, top_k), 500)
         model = model_handler().get_embedding_model()
-        embedding = model.embed([query])[0]
+        embedding = model.embed([query])[0] if query else None
         results = db.get_similar_papers(
-            embedding,
+            embedding=embedding,
             lexical_query=lexical_query,
+            exclude_query=exclude_query,
             top_k=top_k,
             start_date=start_date,
             end_date=end_date,

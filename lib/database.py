@@ -469,7 +469,7 @@ class Database:
         Args:
             papers: Papers to insert.
             insert_type: Can be None to insert all paper attributes (excluding social), "embedding" to only
-                insert embeddings
+                insert embeddings, or "summary" to only insert summaries.
         """
         if not len(papers):
             return
@@ -477,6 +477,8 @@ class Database:
             insert_cols = ["arxiv_id", "abstract", "title", "published_ts", "embedding"]
         elif insert_type == "embeddings":
             insert_cols = ["embedding"]
+        elif insert_type == "summary":
+            insert_cols = ["summary"]
         else:
             raise ValueError("Invalid insert type")
 
@@ -492,6 +494,7 @@ class Database:
                         if p.embedding
                         else None
                     ),
+                    "summary": p.summary,
                 }
 
         def categories_to_insert():
@@ -547,6 +550,8 @@ class Database:
         )
         if "embedding" in col_idx:
             paper.embedding = row[col_idx["embedding"]]
+        if "summary" in col_idx:
+            paper.summary = row[col_idx["summary"]]
         final = {}
         socials = [
             ("tw", TWITTER_SOCIAL_ARXIV_COLUMNS),
@@ -623,13 +628,16 @@ class Database:
         self,
         embedding=None,
         lexical_query=None,
+        exclude_query=None,
         top_k=10,
         start_date=None,
         end_date=None,
         require_social=False,
     ) -> List[SimilarityResult]:
         """Returns papers with embeddings similar to `embedding` according to
-        the dot product (same as cosine similarity given normalized embeddings)
+        the dot product (same as cosine similarity given normalized embeddings).
+
+        Papers are sorted by date if no embedding is provided.
 
         Args:
             embedding: Embedding to query with as a list.
@@ -659,6 +667,11 @@ class Database:
                 f"text_search_vector @@ websearch_to_tsquery('english', %s)"
             )
             sql_args.append(lexical_query)
+        if exclude_query:
+            where_clause.append(
+                f"NOT (text_search_vector @@ websearch_to_tsquery('english', %s))"
+            )
+            sql_args.append(exclude_query)
 
         where_clause_str = "WHERE " + " AND ".join(where_clause)
 
@@ -671,7 +684,7 @@ class Database:
         SELECT {','.join([c for c in cols])}, {similarity_clause} AS similarity
         FROM {Tables.ARXIV}
         {where_clause_str}
-        ORDER BY similarity DESC LIMIT {top_k}
+        ORDER BY similarity DESC, published_ts DESC LIMIT {top_k}
         """
         results = []
         with self._pool_conn() as connection:

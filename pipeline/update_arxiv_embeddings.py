@@ -32,7 +32,7 @@ def run(embedding_model=None):
         if len(embedded_papers) >= upload_every:
             db.insert_papers(embedded_papers, insert_type="embeddings")
             embedded_papers = []
-        logging.info(f"Processed {num_processed}/{total}")
+        logging.info(f"Embedded {num_processed}/{total}")
     db.insert_papers(embedded_papers, insert_type="embeddings")
     logging.info("Done updating embeddings.")
 

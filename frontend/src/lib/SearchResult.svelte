@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { fade, blur, slide } from 'svelte/transition';
 	import Icon from '@iconify/svelte';
+	import { component_subscribe } from 'svelte/internal';
 
 	export let result;
 	export let idx;
 	export let tweetModalInstance;
 	export let hnewsModalInstance;
+	export let showSummary = false;
 
 	let resultId = 'search-result-' + idx;
 	let resultTextId = 'search-result-text-' + idx;
@@ -30,10 +32,46 @@
 			searchResultText.classList.remove('fade-text');
 		}
 	}
+
+	function getHTML(): string {
+		function trimString(s, startswith) {
+			if (s.startsWith(startswith)) {
+				s = s.slice(startswith.length).trim();
+				s = s.charAt(0).toUpperCase() + s.slice(1);
+				return s;
+			}
+			return s;
+		}
+		if (showSummary) {
+			let summary = result['entity']['paper']['summary'];
+			console.log(result);
+			if (summary != null) {
+				summary = JSON.parse(summary);
+				let contrib = summary['contribution'];
+				contrib = trimString(contrib, 'This paper');
+				contrib = trimString(contrib, 'The paper');
+				return contrib;
+				// return (
+				// 	'<ul><li>' +
+				// 	summary['motivation'] +
+				// 	'</li><li>' +
+				// 	summary['contribution'] +
+				// 	'</li><li>' +
+				// 	summary['result'] +
+				// 	'</li>'
+				// );
+			}
+		}
+		return result['entity']['paper']['abstract'];
+	}
 </script>
 
-<article id={resultId} class="search-result" transition:fade={{ duration: 200, delay: idx * 10 }}>
-	<div id={resultTextId} class="fade-text">
+<article
+	id={resultId}
+	class:search-result={!showSummary}
+	transition:fade={{ duration: 200, delay: idx * 10 }}
+>
+	<div id={resultTextId} class:fade-text={!showSummary}>
 		{idx + 1}.
 		<a target="_blank" href={`http://www.arxiv.org/abs/${result['entity']['paper']['arxiv_id']}`}
 			>{result['entity']['paper']['title']}</a
@@ -42,7 +80,12 @@
 			<i>Submitted {formatDate(result['entity']['paper']['published'])}</i>
 		</p>
 		<div on:keydown={expandSearchResultFn} on:click={expandSearchResultFn}>
-			{result['entity']['paper']['abstract']}
+			{#if showSummary}
+				{@html getHTML()}
+			{:else}
+				{@html getHTML()}
+			{/if}
+			<!-- {@html getHTML()} -->
 		</div>
 	</div>
 	<div class="grid">
@@ -99,7 +142,13 @@
 </article>
 
 <style>
-	:global(.search-result) {
+	.fade-text {
+		-webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 99%);
+		mask-image: linear-gradient(to bottom, black 80%, transparent 99%);
+		max-height: 100%;
+	}
+	/* :global(.search-result) {*/
+	.search-result {
 		max-height: 400px;
 		height: 400px;
 		overflow: hidden;

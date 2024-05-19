@@ -2,11 +2,11 @@
 	import axios from 'axios';
 	import { apiUrl } from '$lib/Utils.svelte';
 
-	let _searchResults = [];
 	export let onSearchCallback = function () {};
 
 	// Readonly hack https://github.com/sveltejs/svelte/issues/7712#issuecomment-1642470141
 	export let searchResults = [];
+	let _searchResults = [];
 	$: searchResults = _searchResults;
 
 	let searchIsLoading = false;
@@ -14,6 +14,7 @@
 	// refactor to dict
 	let searchQuery: string = '';
 	let lexicalSearchQuery: string = '';
+	let exclLexicalSearchQuery: string = ''; // keywords to exclude
 
 	let settings = {
 		rankingSemantic: 100,
@@ -22,12 +23,14 @@
 		rankingRecency: 0,
 
 		retrievalKeywordsMustAppear: false,
+		retrievalExcludeKeywords: false,
 		retrievalMustSocial: false,
 		retrievalStartDate: undefined,
 		retrievalEndDate: undefined,
 		retrievalTopK: 50,
 		lexicalSearchQuery: ''
 	};
+	export let showSummaries = false;
 
 	// let rankingSemantic = 100;
 	// let rankingLexical = 0;
@@ -45,9 +48,11 @@
 		let semanticSimilarity = result['similarity'];
 		//console.log({ semanticSimilarity, maxSemanticScore, popularityScore, maxPopularityScore });
 		let published = new Date(result['entity']['paper']['published']).getTime();
-
-		const wSemanticScore = (settings.rankingSemantic * semanticSimilarity) / maxSemanticScore;
-		const wPopularityScore = (settings.rankingPopularity * popularityScore) / maxPopularityScore;
+		const epsilon = 0.000001;
+		const wSemanticScore =
+			(settings.rankingSemantic * semanticSimilarity) / (epsilon + maxSemanticScore);
+		const wPopularityScore =
+			(settings.rankingPopularity * popularityScore) / (epsilon + maxPopularityScore);
 		const wRecencyScore = settings.rankingRecency * decayedRecencyScore(published, maxDate);
 
 		//console.log({ wSemanticScore, wPopularityScore, wRecencyScore });
@@ -84,7 +89,10 @@
 		let quotes = result['entity']['quotes'] || 0;
 		let impressions = result['entity']['impressions'] || 0;
 		let replies = result['entity']['replies'] || 0;
-		return Math.log(1 + likes + retweets * 2 + replies * 5 + quotes * 5 + impressions / 1000.0);
+		let score = Math.log(
+			1 + likes + retweets * 2 + replies * 5 + quotes * 5 + impressions / 1000.0
+		);
+		return score;
 	}
 
 	function decayedRecencyScore(date, maxDate) {
@@ -114,9 +122,6 @@
 	}
 
 	async function search(query: string) {
-		if (query.trim() == '') {
-			return;
-		}
 		let lexicalSearchQueryFinal;
 		if (settings.retrievalKeywordsMustAppear) {
 			lexicalSearchQueryFinal = lexicalSearchQuery || query;
@@ -133,7 +138,8 @@
 					end_date: settings.retrievalEndDate,
 					top_k: settings.retrievalTopK,
 					require_social: settings.retrievalMustSocial,
-					lexical_query: lexicalSearchQueryFinal
+					lexical_query: lexicalSearchQueryFinal,
+					exclude_query: settings.retrievalExcludeKeywords ? exclLexicalSearchQuery : undefined
 				}
 			});
 			_searchResults = response.data['data'];
@@ -170,6 +176,14 @@
 		aria-busy={searchIsLoading ? 'true' : 'false'}>Search</a
 	>
 </div>
+<!-- Whether to show summaries-->
+<!-- <div>
+	<label for="show_summaries">
+		<input id="show_summaries" type="checkbox" bind:checked={showSummaries} />
+		Show brief summaries instead of abstracts.
+	</label>
+</div>
+<br /> -->
 
 <!-- Advanced search settings -->
 <details>
@@ -200,6 +214,27 @@
 						id="retrieval_kw_query"
 						placeholder={searchQuery}
 						bind:value={lexicalSearchQuery}
+					/>
+				</label>
+			</div>
+			<label for="retrieval_excl_kw">
+				<input
+					id="retrieval_excl_kw"
+					type="checkbox"
+					bind:checked={settings.retrievalExcludeKeywords}
+				/>
+				Exclude specific keywords from results.
+			</label>
+			<div hidden={!settings.retrievalExcludeKeywords}>
+				<label for="retrieval_excl_kw_query">
+					Keywords to <span
+						data-tooltip="Supports the use of quotes to create phrases, and 'OR' to match any of multiple words."
+						>exclude</span
+					>:
+					<input
+						style="width:50%"
+						id="retrieval_excl_kw_query"
+						bind:value={exclLexicalSearchQuery}
 					/>
 				</label>
 			</div>

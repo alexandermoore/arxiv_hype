@@ -11,7 +11,7 @@ from pipeline import (
 def run(embedding_model=None, start_dt=None):
     logging.info("Handling Twitter")
     # read_twitter.run(start_dt=start_dt, max_results=50, num_time_blocks=3)
-    read_twitter.run(max_results=150)
+    read_twitter.run(max_results=1000)
     logging.info("Handling Hacker News")
     # API max is 1000 results
     # Fetch most recent
