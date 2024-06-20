@@ -1,9 +1,10 @@
 name: update-db
 run-name: Pull new data and update databases.
-# on: [workflow_dispatch]
 on:
   schedule:
     - cron: "0 9 * * *"
+  workflow_dispatch:
+
 jobs:
   check-bats-version:
     runs-on: ubuntu-latest

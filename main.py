@@ -201,9 +201,16 @@ async def search(
         end_date = util.maybe_date_str_to_datetime(end_date)
         top_k = min(max(1, top_k), 500)
         model = model_handler().get_embedding_model()
-        embedding = model.embed([query])[0] if query else None
+        # Allow query to be broken into multiple queries with "+"
+        if query:
+            # embeddings = []
+            # for q in query.split("+"):
+            #     embeddings.append(model.embed([q.strip()])[0])
+            embeddings = model.embed([q.strip() for q in query.split("+")])
+        else:
+            embeddings = None
         results = db.get_similar_papers(
-            embedding=embedding,
+            embeddings=embeddings,
             lexical_query=lexical_query,
             exclude_query=exclude_query,
             top_k=top_k,

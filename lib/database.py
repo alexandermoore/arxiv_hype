@@ -626,7 +626,7 @@ class Database:
 
     def get_similar_papers(
         self,
-        embedding=None,
+        embeddings: Optional[List[List[float]]] = None,
         lexical_query=None,
         exclude_query=None,
         top_k=10,
@@ -640,7 +640,7 @@ class Database:
         Papers are sorted by date if no embedding is provided.
 
         Args:
-            embedding: Embedding to query with as a list.
+            embeddings: Embeddings to query with as a list of lists.
             top_k: Return the `top_k` most similar results.
             start_date: Earliest publication date.
             end_date: Latest publication date.
@@ -675,9 +675,13 @@ class Database:
 
         where_clause_str = "WHERE " + " AND ".join(where_clause)
 
-        if embedding is not None:
-            embedding = json.dumps(embedding, separators=(",", ":"))
-            similarity_clause = f"1 - (embedding <=> '{embedding}')"
+        if embeddings is not None:
+            similarity_clause = []
+            for embedding in embeddings:
+                embedding = json.dumps(embedding, separators=(",", ":"))
+                similarity_clause.append(f"1 - (embedding <=> '{embedding}')")
+            similarity_clause = " + ".join(similarity_clause)
+            similarity_clause = f"({similarity_clause}) / {len(embeddings)}"
         else:
             similarity_clause = "0"
         q = f"""
