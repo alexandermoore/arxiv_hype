@@ -4,8 +4,9 @@ run-name: Pull new data and update databases.
 on:
   schedule:
     - cron: "0 9 * * *"
+  workflow_dispatch:
 jobs:
-  check-bats-version:
+  run-job:
     runs-on: ubuntu-latest
     steps:    
     - name: Invoke update hook
